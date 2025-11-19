@@ -1,0 +1,39 @@
+version: '3'
+
+vars:
+  BUILD_VERSION: "1.0.17"
+  BUILD_TIME:
+    sh: date +%s
+  BINARY_NAME: "scapi"
+  BINARY_PATH: "/app/bin/{{.BINARY_NAME}}"
+  LDFLAGS: '-X main.Version={{.BUILD_VERSION}} -X main.Build={{.BUILD_TIME}} -extldflags "-static"'
+
+tasks:
+  install-deps:
+    cmds:
+      - go mod tidy
+    desc: install dependencies
+
+  check-dir:
+    desc: Checking directory contents
+    cmds:
+      - ls -la /app/src
+      - ls -la /app/src/cmd/scapi
+
+  build:
+    desc: Building a Go project
+    cmds:
+      - task: install-deps
+      #- task: check-dir
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '{{.LDFLAGS}}' -o /app/bin/{{.BINARY_NAME}} /app/src/cmd/scapi
+
+  clean:
+    desc: Cleaning up build artifacts
+    cmds:
+      - rm -rf /app/bin/*
+
+  rebuild:
+    desc: Complete cleanup and assembly of the project
+    cmds:
+      - task: clean
+      - task: build
