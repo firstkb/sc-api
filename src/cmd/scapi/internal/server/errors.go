@@ -25,9 +25,9 @@ func (srv *Server) wrapErr(
 
 	if claim != nil {
 		fields = append(fields,
-			"clientID", func() any {
+			"tenantID", func() any {
 				if claim != nil {
-					return claim.ClientID
+					return claim.TenantID
 				}
 				return nil
 			}(),

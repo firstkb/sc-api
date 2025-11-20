@@ -4,11 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net"
 	"strings"
 	"time"
-
-	mssql "github.com/microsoft/go-mssqldb"
 )
 
 const (
@@ -132,16 +129,7 @@ func (d *Database) setDbName(query string) string {
 
 func (d *Database) traceQuery(err error, executionTime time.Duration, query string, args ...any) {
 	if err != nil {
-		switch v := err.(type) {
-		case mssql.Error:
-			d.client.logger.Debug(err.Error(), "sqlError", v, "executionTime", executionTime.Milliseconds(), "query", query, "params", args)
-		case mssql.ServerError:
-			d.client.logger.Debug(err.Error(), "sqlServerError", v, "executionTime", executionTime.Milliseconds(), "query", query, "params", args)
-		case *net.OpError:
-			d.client.logger.Debug(err.Error(), "netOpError", v, "executionTime", executionTime.Milliseconds(), "query", query, "params", args)
-		default:
-			d.client.logger.Debug(err.Error(), "executionTime", executionTime.Milliseconds(), "query", query, "params", args)
-		}
+		d.client.logger.Debug(err.Error(), "executionTime", executionTime.Milliseconds(), "query", query, "params", args)
 	} else if executionTime > longRunningQueryThreshold {
 		d.client.logger.Warn(fmt.Sprintf("query completed successfully, but it took longer than the given threshold of %vms", longRunningQueryThreshold.Milliseconds()),
 			"executionTime", executionTime.Milliseconds(), "query", query, "params", args)

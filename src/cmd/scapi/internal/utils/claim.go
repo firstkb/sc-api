@@ -11,7 +11,7 @@ import (
 )
 
 type Claim struct {
-	ClientID   string
+	TenantID   string
 	Email      string
 	Claims     jwt.MapClaims
 	ServerName string
@@ -66,7 +66,7 @@ func CreateContextWithClaim(r *http.Request) (context.Context, error) {
 		return nil, errors.New("username not found in token")
 	}
 
-	clientID, email, err := parseUsername(username)
+	tenantID, email, err := parseUsername(username)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func CreateContextWithClaim(r *http.Request) (context.Context, error) {
 	}
 
 	claim := &Claim{
-		ClientID:   clientID,
+		TenantID:   tenantID,
 		Email:      email,
 		Claims:     claims,
 		ServerName: serverName,
@@ -98,7 +98,7 @@ func CreateContextWithClaim(r *http.Request) (context.Context, error) {
 	return ctx, nil
 }
 
-// parseUsername Split client_id and email
+// parseUsername Split tenant_id and email
 func parseUsername(username string) (string, string, error) {
 	parts := strings.Split(username, "|")
 	if len(parts) != 2 {

@@ -17,7 +17,7 @@ require (
 	github.com/knadh/koanf/providers/parameterstore/v2 v2.0.0
 	github.com/knadh/koanf/providers/rawbytes v0.1.0
 	github.com/knadh/koanf/v2 v2.1.2
-	github.com/microsoft/go-mssqldb v1.8.0
+	github.com/lib/pq v1.10.9
 	github.com/phuslu/log v1.0.115
 	golang.org/x/sys v0.37.0
 )

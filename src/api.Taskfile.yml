@@ -37,3 +37,8 @@ tasks:
     cmds:
       - task: clean
       - task: build
+
+  schema-bundle:
+    desc: Generate golden schema bundle from migrations
+    cmds:
+      - go run src/tools/generate_bundle.go
