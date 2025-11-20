@@ -7,8 +7,8 @@ import (
 
 func NewClientMock(db *sql.DB, logger *slog.Logger, dbnames map[string]string) *Client {
 	return &Client{
-		db:      db,
-		logger:  logger,
-		dbnames: dbnames,
+		masterDB: db,
+		logger:   logger,
+		dbnames:  dbnames,
 	}
 }

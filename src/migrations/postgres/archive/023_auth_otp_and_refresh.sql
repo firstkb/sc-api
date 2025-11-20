@@ -2,8 +2,6 @@
 -- OTP codes and refresh tokens for authentication
 -- Applied to app databases (sc-app, sc-first, etc.)
 
-BEGIN;
-
 -- OTP codes table
 CREATE TABLE IF NOT EXISTS auth_otp(
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -46,6 +44,3 @@ CREATE INDEX IF NOT EXISTS ix_auth_refresh_token_revoked ON auth_refresh_token(r
 COMMENT ON TABLE auth_refresh_token IS 'Refresh tokens for JWT token rotation';
 COMMENT ON COLUMN auth_refresh_token.token_hash IS 'SHA256 hash of the refresh token';
 COMMENT ON COLUMN auth_refresh_token.revoked_at IS 'Timestamp when token was revoked (NULL if active)';
-
-COMMIT;
-

@@ -26,3 +26,16 @@ func (r *Repo) getPing(ctx context.Context) (string, error) {
 	}
 	return "pong", nil
 }
+
+func (r *Repo) getUsers(ctx context.Context, tenantID string) ([]map[string]any, error) {
+	db, err := r.Client.OpenDB(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.Select("SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 10", tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows, nil
+}

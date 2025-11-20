@@ -5,7 +5,7 @@
 -- This file contains all app database migrations
 -- concatenated in order for fast database provisioning.
 --
--- Generated: 2025-11-19T16:19:12-05:00
+-- Generated: 2025-11-19T22:31:23-05:00
 -- Source: migrations from archive/ and app/ directories
 --
 -- Usage:
@@ -13,7 +13,7 @@
 --   2. psql -d new_db -f bundle/app_schema_full.sql
 --   3. Run migrations to catch up if bundle is behind HEAD
 --
--- Checksum: 07530f1abee9e959bff4efe559b88ecd9338c3ce18d581fe07009e0c8a5b3fd9
+-- Checksum: 753a7c0b44d11d387cae719fdaceaf4ea2643d8e5a886adf9d92297dc7edbddc
 --
 -- Migrations included:
 --   - 010_app_template.sql (archive)
@@ -34,8 +34,6 @@
 
 -- 010_app_template.sql
 -- App schema template (applied to public sandbox or per-tenant schema)
-
-BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
@@ -66,10 +64,6 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users(tenant_id, email);
 CREATE INDEX IF NOT EXISTS idx_users_phone ON users(tenant_id, phone);
 
-COMMIT;
-
-
-
 
 -- ============================================
 -- Migration: 011_rls.sql (archive)
@@ -77,8 +71,6 @@ COMMIT;
 
 -- 011_rls.sql
 -- Enable row level security for sandbox tables
-
-BEGIN;
 
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users FORCE ROW LEVEL SECURITY;
@@ -101,10 +93,6 @@ CREATE POLICY p_contacts_tenant ON contacts
 --  USING (tenant_id = current_setting('app.tenant_id', true)::bigint)
 --  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::bigint);
 
-COMMIT;
-
-
-
 
 -- ============================================
 -- Migration: 012_email_ci.sql (archive)
@@ -112,8 +100,6 @@ COMMIT;
 
 -- 012_email_ci.sql
 -- Convert users.email to citext and enforce case-insensitive uniqueness
-
-BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS citext;
 
@@ -126,10 +112,6 @@ DROP INDEX IF EXISTS ux_users_tenant_email;
 DROP INDEX IF EXISTS ux_users_tenant_email_lower;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_tenant_email_ci ON users(tenant_id, email);
 
-COMMIT;
-
-
-
 
 -- ============================================
 -- Migration: 015_public_code_app.sql (archive)
@@ -139,8 +121,6 @@ COMMIT;
 -- Public code table in app databases (sc-app, sc-first, etc.)
 -- Codes are stored in tenant's app database for data isolation
 -- IMPORTANT: This migration MUST be executed in app databases (sc-app, sc-first, etc.)
-
-BEGIN;
 
 CREATE TABLE IF NOT EXISTS public_code (
   code text PRIMARY KEY,
@@ -163,10 +143,6 @@ COMMENT ON COLUMN public_code.resource_id IS 'Optional resource identifier (e.g.
 COMMENT ON COLUMN public_code.expires_at IS 'Optional expiration time for temporary codes';
 COMMENT ON COLUMN public_code.metadata IS 'Additional metadata (JSON)';
 
-COMMIT;
-
-
-
 
 -- ============================================
 -- Migration: 020_idempotency.sql (archive)
@@ -175,8 +151,6 @@ COMMIT;
 -- 020_idempotency.sql
 -- Idempotency keys table for preventing duplicate POST requests
 -- IMPORTANT: This migration MUST be executed in app databases (sc-app, sc-first, etc.), NOT in master
-
-BEGIN;
 
 CREATE TABLE IF NOT EXISTS idempotency_keys (
   tenant_id    BIGINT NOT NULL,
@@ -204,10 +178,6 @@ COMMENT ON COLUMN idempotency_keys.status IS 'Request status: started, succeeded
 COMMENT ON COLUMN idempotency_keys.response IS 'Cached response body (JSON) for successful requests';
 COMMENT ON COLUMN idempotency_keys.ttl_at IS 'Expiration time for automatic cleanup';
 
-COMMIT;
-
-
-
 
 -- ============================================
 -- Migration: 022_notification_templates.sql (archive)
@@ -216,8 +186,6 @@ COMMIT;
 -- 022_notification_templates.sql
 -- Notification templates table for email/SMS templates with tenant-specific overrides
 -- Applied to app databases (sc-app, sc-first, etc.)
-
-BEGIN;
 
 CREATE TABLE IF NOT EXISTS notification_template(
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -241,9 +209,6 @@ COMMENT ON COLUMN notification_template.kind IS 'Template type: email or sms';
 COMMENT ON COLUMN notification_template.key IS 'Template key identifier (e.g., otp, high_risk, invite)';
 COMMENT ON COLUMN notification_template.locale IS 'Locale code (e.g., en, ru, default)';
 
-COMMIT;
-
-
 
 -- ============================================
 -- Migration: 023_auth_otp_and_refresh.sql (archive)
@@ -252,8 +217,6 @@ COMMIT;
 -- 023_auth_otp_and_refresh.sql
 -- OTP codes and refresh tokens for authentication
 -- Applied to app databases (sc-app, sc-first, etc.)
-
-BEGIN;
 
 -- OTP codes table
 CREATE TABLE IF NOT EXISTS auth_otp(
@@ -298,9 +261,6 @@ COMMENT ON TABLE auth_refresh_token IS 'Refresh tokens for JWT token rotation';
 COMMENT ON COLUMN auth_refresh_token.token_hash IS 'SHA256 hash of the refresh token';
 COMMENT ON COLUMN auth_refresh_token.revoked_at IS 'Timestamp when token was revoked (NULL if active)';
 
-COMMIT;
-
-
 
 -- ============================================
 -- Migration: 024_membership_level.sql (archive)
@@ -309,8 +269,6 @@ COMMIT;
 -- 024_membership_level.sql
 -- Membership table with roles and access levels
 -- Applied to app databases (sc-app, sc-first, etc.)
-
-BEGIN;
 
 -- Create membership table if it doesn't exist
 CREATE TABLE IF NOT EXISTS membership (
@@ -340,9 +298,6 @@ COMMENT ON COLUMN membership.role IS 'Role name: root, admin, manager, user, vie
 COMMENT ON COLUMN membership.level IS 'Access level: 100=root, 80=admin, 60=manager, 40=user, 20=viewer';
 COMMENT ON COLUMN membership.status IS 'Membership status: active, inactive, suspended';
 
-COMMIT;
-
-
 
 -- ============================================
 -- Migration: 026_event_log.sql (archive)
@@ -351,8 +306,6 @@ COMMIT;
 -- 026_event_log.sql
 -- Event logging table for user events (auth, user actions, etc.)
 -- Applied to app databases (sc-app, sc-first, etc.)
-
-BEGIN;
 
 CREATE TABLE IF NOT EXISTS event_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -384,9 +337,6 @@ COMMENT ON COLUMN event_log.user_id IS 'User ID (NULL if event is not user-speci
 COMMENT ON COLUMN event_log.event_type IS 'Event type: otp_request, otp_verify, login, logout, user_create, etc.';
 COMMENT ON COLUMN event_log.event_data IS 'Additional event data as JSON (may contain masked PII)';
 COMMENT ON COLUMN event_log.ip_address IS 'Client IP address for security tracking';
-
-COMMIT;
-
 
 
 -- ============================================

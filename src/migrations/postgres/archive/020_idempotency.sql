@@ -2,8 +2,6 @@
 -- Idempotency keys table for preventing duplicate POST requests
 -- IMPORTANT: This migration MUST be executed in app databases (sc-app, sc-first, etc.), NOT in master
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS idempotency_keys (
   tenant_id    BIGINT NOT NULL,
   key          TEXT   NOT NULL,
@@ -29,7 +27,3 @@ COMMENT ON COLUMN idempotency_keys.actor_sub IS 'Actor subject (user ID) from JW
 COMMENT ON COLUMN idempotency_keys.status IS 'Request status: started, succeeded, or failed';
 COMMENT ON COLUMN idempotency_keys.response IS 'Cached response body (JSON) for successful requests';
 COMMENT ON COLUMN idempotency_keys.ttl_at IS 'Expiration time for automatic cleanup';
-
-COMMIT;
-
-

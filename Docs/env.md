@@ -49,7 +49,7 @@
 
 - **2.3. Настройки подключения к PostgreSQL**
 
-Конфигурация БД маппится на поля структуры `server.Config` (`json:"host"`, `json:"port"`, `json:"username"`, `json:"password"`, `json:"dbname"`), которые заполняются через конфиг/ENV. На их основе формируется строка подключения:
+Конфигурация БД маппится на поля структуры `server.Config` (`json:"host"`, `json:"port"`, `json:"username"`, `json:"password"`, `json:"dbname"` и др.), которые заполняются через конфиг/ENV. На их основе формируется строка подключения:
 
 ```text
 host=<DbHost> port=<DbPort> dbname=<DbName> user=<DbUser> password=<DbPass> sslmode=disable
@@ -87,6 +87,31 @@ host=<DbHost> port=<DbPort> dbname=<DbName> user=<DbUser> password=<DbPass> sslm
     - Обязательность: да.
     - Пример: `SCAPI_DB_DBNAME=scapi_master`.
 
+- **2.3.1. Настройки пула подключений к БД**
+
+  Эти параметры позволяют управлять размером и временем жизни пулов подключений `sql.DB` как для master‑БД, так и для tenant‑БД. Все они опциональны; при отсутствии используются значения по умолчанию.
+
+  - **`SCAPI_DB_POOL_MAX_IDLE`**
+    - Назначение: максимальное число простаивающих (idle) соединений в пуле.
+    - Тип: целое число (`int`).
+    - Обязательность: нет.
+    - Значение по умолчанию: `10`.
+    - Пример: `SCAPI_DB_POOL_MAX_IDLE=10`.
+
+  - **`SCAPI_DB_POOL_MAX_OPEN`**
+    - Назначение: максимальное число открытых соединений в пуле.
+    - Тип: целое число (`int`).
+    - Обязательность: нет.
+    - Значение по умолчанию: `50`.
+    - Пример: `SCAPI_DB_POOL_MAX_OPEN=50`.
+
+  - **`SCAPI_DB_POOL_MAX_LIFETIME`**
+    - Назначение: максимальное время жизни одного соединения в пуле.
+    - Тип: строка‑длительность в формате `time.Duration` (например, `30m`, `1h`).
+    - Обязательность: нет.
+    - Значение по умолчанию: `30m`.
+    - Пример: `SCAPI_DB_POOL_MAX_LIFETIME=30m`.
+
 - **2.4. Тестовые переменные**
   - **`SCAPI_TEST_PG_CONN`**
     - Назначение: строка подключения к тестовой базе PostgreSQL для интеграционных тестов `internal/sqlserver`.
@@ -109,6 +134,11 @@ SCAPI_DB_PORT=5432
 SCAPI_DB_USERNAME=scapi
 SCAPI_DB_PASSWORD=changeme
 SCAPI_DB_DBNAME=scapi_master
+
+# Optional DB pool settings
+# SCAPI_DB_POOL_MAX_IDLE=10
+# SCAPI_DB_POOL_MAX_OPEN=50
+# SCAPI_DB_POOL_MAX_LIFETIME=30m
 
 # (опционально) тестовая БД для интеграционных тестов
 # SCAPI_TEST_PG_CONN=host=localhost port=5432 dbname=scapi_test user=scapi_test password=secret sslmode=disable

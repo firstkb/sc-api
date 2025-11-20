@@ -2,8 +2,6 @@
 -- Membership table with roles and access levels
 -- Applied to app databases (sc-app, sc-first, etc.)
 
-BEGIN;
-
 -- Create membership table if it doesn't exist
 CREATE TABLE IF NOT EXISTS membership (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -31,6 +29,3 @@ COMMENT ON TABLE membership IS 'User memberships with roles and access levels pe
 COMMENT ON COLUMN membership.role IS 'Role name: root, admin, manager, user, viewer';
 COMMENT ON COLUMN membership.level IS 'Access level: 100=root, 80=admin, 60=manager, 40=user, 20=viewer';
 COMMENT ON COLUMN membership.status IS 'Membership status: active, inactive, suspended';
-
-COMMIT;
-

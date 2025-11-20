@@ -33,7 +33,27 @@ func (s *PingService) GetPing(ctx context.Context) (*Ping, error) {
 		return nil, err
 	}
 
+	users100, err := s.repository.getUsers(ctx, "100")
+	if err != nil {
+		return nil, err
+	}
+
+	users101, err := s.repository.getUsers(ctx, "101")
+	if err != nil {
+		return nil, err
+	}
+
+	users102, err := s.repository.getUsers(ctx, "102")
+	if err != nil {
+		return nil, err
+	}
+
 	return &Ping{
 		Message: ping,
+		Users: map[string][]map[string]any{
+			"100": users100,
+			"101": users101,
+			"102": users102,
+		},
 	}, nil
 }

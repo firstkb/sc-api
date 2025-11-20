@@ -2,8 +2,6 @@
 -- Event logging table for user events (auth, user actions, etc.)
 -- Applied to app databases (sc-app, sc-first, etc.)
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS event_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id BIGINT NOT NULL,
@@ -34,6 +32,3 @@ COMMENT ON COLUMN event_log.user_id IS 'User ID (NULL if event is not user-speci
 COMMENT ON COLUMN event_log.event_type IS 'Event type: otp_request, otp_verify, login, logout, user_create, etc.';
 COMMENT ON COLUMN event_log.event_data IS 'Additional event data as JSON (may contain masked PII)';
 COMMENT ON COLUMN event_log.ip_address IS 'Client IP address for security tracking';
-
-COMMIT;
-

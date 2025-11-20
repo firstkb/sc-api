@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/pingsvc"
-	"github.com/firstkb/sc-api/internal/migrate"
 	"github.com/firstkb/sc-api/internal/sqlserver"
 
 	"github.com/firstkb/sc-api/internal/config"
@@ -23,12 +21,19 @@ type Config struct {
 }
 
 type DatabaseConfig struct {
-	Host       string `json:"host"`
-	Port       string `json:"port"`
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	MasterName string `json:"mastername"`
-	SSLMode    string `json:"sslmode"`
+	Host       string     `json:"host"`
+	Port       string     `json:"port"`
+	Username   string     `json:"username"`
+	Password   string     `json:"password"`
+	MasterName string     `json:"mastername"`
+	SSLMode    string     `json:"sslmode"`
+	PoolConfig PoolConfig `json:"pool"`
+}
+
+type PoolConfig struct {
+	MaxIdle int    `json:"maxidle"`
+	MaxOpen int    `json:"maxopen"`
+	MaxLife string `json:"maxlifetime"`
 }
 
 type Server struct {
@@ -36,7 +41,6 @@ type Server struct {
 	logger     *slog.Logger
 	httpServer *http.Server
 	sqlClient  *sqlserver.Client
-	masterDB   *sql.DB
 	pingsvc    *pingsvc.PingService
 }
 
@@ -90,11 +94,6 @@ func (srv *Server) Stop(ctx context.Context) {
 		srv.logger.Error(fmt.Sprintf("Error shutting down API server: %s", err))
 	}
 
-	if srv.masterDB != nil {
-		if err := srv.masterDB.Close(); err != nil {
-			srv.logger.Error("Error closing master DB", "error", err)
-		}
-	}
 }
 
 func (srv *Server) initialize() error {
@@ -104,20 +103,33 @@ func (srv *Server) initialize() error {
 
 	conn := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=disable", srv.config.DB.Host, srv.config.DB.Port, srv.config.DB.MasterName, srv.config.DB.Username, srv.config.DB.Password)
 
-	// Master DB for tenant metadata and migrations
-	masterDB, err := sql.Open("postgres", conn)
-	if err != nil {
-		return fmt.Errorf("failed to open master db: %v", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := masterDB.PingContext(ctx); err != nil {
-		_ = masterDB.Close()
-		return fmt.Errorf("failed to ping master db: %v", err)
-	}
-	srv.masterDB = masterDB
+	// Resolve DB pool settings with sane defaults.
+	const (
+		defaultPoolMaxIdle = 10
+		defaultPoolMaxOpen = 50
+		defaultPoolLife    = time.Minute * 30
+	)
 
-	client, err := sqlserver.NewClient(conn, srv.logger)
+	poolMaxIdle := srv.config.DB.PoolConfig.MaxIdle
+	if poolMaxIdle <= 0 {
+		poolMaxIdle = defaultPoolMaxIdle
+	}
+	poolMaxOpen := srv.config.DB.PoolConfig.MaxOpen
+	if poolMaxOpen <= 0 {
+		poolMaxOpen = defaultPoolMaxOpen
+	}
+
+	poolLife := defaultPoolLife
+	if srv.config.DB.PoolConfig.MaxLife != "" {
+		if d, err := time.ParseDuration(srv.config.DB.PoolConfig.MaxLife); err == nil {
+			poolLife = d
+		} else {
+			srv.logger.Warn("invalid DB pool max lifetime, using default", "value", srv.config.DB.PoolConfig.MaxLife, "error", err)
+		}
+	}
+
+	client, err := sqlserver.NewClient(conn, srv.logger,
+		sqlserver.WithPoolConfig(poolMaxIdle, poolMaxOpen, poolLife))
 	if err != nil {
 		return fmt.Errorf("failed to create a SQL Server client: %v", err)
 	}
@@ -125,16 +137,9 @@ func (srv *Server) initialize() error {
 	srv.sqlClient = client
 
 	// Run migrations for all tenant databases (best-effort, non-fatal on error).
-	migCfg := migrate.DBConfig{
-		Host:     srv.config.DB.Host,
-		Port:     srv.config.DB.Port,
-		Username: srv.config.DB.Username,
-		Password: srv.config.DB.Password,
-		SSLMode:  srv.config.DB.SSLMode,
-	}
 	migCtx, migCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer migCancel()
-	if err := migrate.ApplyAllWithAutoDiscovery(migCtx, srv.masterDB, migCfg, srv.logger); err != nil {
+	if err := srv.sqlClient.ApplyMigrations(migCtx, srv.logger); err != nil {
 		srv.logger.Error("failed to apply migrations", "error", err)
 	}
 

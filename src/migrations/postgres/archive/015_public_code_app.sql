@@ -3,8 +3,6 @@
 -- Codes are stored in tenant's app database for data isolation
 -- IMPORTANT: This migration MUST be executed in app databases (sc-app, sc-first, etc.)
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS public_code (
   code text PRIMARY KEY,
   tenant_id BIGINT NOT NULL,
@@ -25,7 +23,3 @@ COMMENT ON COLUMN public_code.tenant_id IS 'Tenant that owns this code';
 COMMENT ON COLUMN public_code.resource_id IS 'Optional resource identifier (e.g., survey ID)';
 COMMENT ON COLUMN public_code.expires_at IS 'Optional expiration time for temporary codes';
 COMMENT ON COLUMN public_code.metadata IS 'Additional metadata (JSON)';
-
-COMMIT;
-
-

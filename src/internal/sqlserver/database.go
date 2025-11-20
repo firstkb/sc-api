@@ -19,6 +19,7 @@ var (
 type Database struct {
 	client *Client
 	ctx    context.Context
+	db     *sql.DB
 	Name   string
 }
 
@@ -29,7 +30,7 @@ func (d *Database) Exec(query string, args ...any) (sql.Result, error) {
 
 	result, err := runWithRetry(func() (sql.Result, error) {
 		start := time.Now()
-		result, err := d.client.db.ExecContext(d.ctx, query, args...)
+		result, err := d.db.ExecContext(d.ctx, query, args...)
 		executionTime = time.Since(start)
 		return result, err
 	})
@@ -48,7 +49,7 @@ func (d *Database) Query(query string, args ...any) (*sql.Rows, error) {
 
 	rows, err := runWithRetry(func() (*sql.Rows, error) {
 		start := time.Now()
-		rows, err := d.client.db.QueryContext(d.ctx, query, args...)
+		rows, err := d.db.QueryContext(d.ctx, query, args...)
 		executionTime = time.Since(start)
 		return rows, err
 	})
@@ -67,7 +68,7 @@ func (d *Database) QueryRow(query string, args ...any) *sql.Row {
 
 	row, _ := runWithRetry(func() (*sql.Row, error) {
 		start := time.Now()
-		row := d.client.db.QueryRowContext(d.ctx, query, args...)
+		row := d.db.QueryRowContext(d.ctx, query, args...)
 		executionTime = time.Since(start)
 		return row, nil
 	})
@@ -142,5 +143,13 @@ func (d *Database) normalizeDBValue(val any) any {
 	if val == nil {
 		return ""
 	}
-	return val
+
+	switch v := val.(type) {
+	case []byte:
+		// text/uuid and similar types are often returned as []byte by pq;
+		// convert to string so JSON-логирование и API-ответы были человекочитаемыми.
+		return string(v)
+	default:
+		return val
+	}
 }

@@ -245,23 +245,21 @@
 
    - мапа вида `map[string]TenantMeta`, где `TenantMeta` содержит `DbName`, `Isolation`, `IsSandbox`.
 
-2. **Реализовать карту пулов**:
-   - добавить в `Client` поля:
+2. **Реализовать карту пулов** (сделано частично в текущей реализации):
+   - в `Client` добавлены поля:
 
      ```go
      poolsMu sync.RWMutex
-     pools   map[string]*sql.DB  // dbName -> *sql.DB for dedicated_db
+     pools   map[string]*sql.DB  // dbName -> *sql.DB
+     poolCfg poolConfig          // max_idle, max_open, max_lifetime
      ```
 
-   - реализовать `getDBForName(dbName string) (*sql.DB, error)` с ленивым созданием пула и базовыми лимитами.
+   - реализован `getOrOpenDB(dbName string) (*sql.DB, error)` с ленивым созданием пула по тем же параметрам подключения, что и для master‑БД (но с другим `dbname`), настройкой лимитов и валидацией через `PingContext`.
 
-3. **Изменить `OpenDB`**:
-   - по `tenantId` получать `TenantMeta` (из кэша);
-   - если `TenantMeta.Isolation == "dedicated_db"`:
-     - использовать `getDBForName(meta.DbName)`,
-     - создавать `Database`, который не использует `{db}` (или игнорирует его);
-   - иначе (sandbox/dedicated_schema):
-     - оставлять нынешнюю логику: общий пул + при необходимости `{db}` (до момента, когда перейдём на схемы).
+3. **Изменить `OpenDB`** (первая итерация уже реализована):
+   - по `tenantId` берётся `db_name` из кэша `Client.dbnames`;
+   - через `getOrOpenDB(db_name)` получается (или создаётся) пул для этой физической БД;
+   - создаётся `Database`, который теперь держит конкретный `*sql.DB` и использует его напрямую, а плейсхолдер `{db}` остаётся только как логическая метка/совместимость на уровне SQL.
 
 4. **Интеграция с миграциями**:
    - опционально унифицировать открытие БД в миграционном раннере и в `sqlserver.Client`, чтобы использовать общие настройки (retry‑логика, лимиты, трейсинг).
