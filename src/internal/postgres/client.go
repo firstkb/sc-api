@@ -1,4 +1,4 @@
-package sqlserver
+package postgres
 
 import (
 	"context"
@@ -18,6 +18,7 @@ type poolConfig struct {
 	MaxIdle     int
 	MaxOpen     int
 	MaxLifetime time.Duration
+	MaxIdleTime time.Duration
 }
 
 type Client struct {
@@ -39,7 +40,7 @@ var dbnamesUpdateInterval time.Duration = 5 * time.Minute
 type Option func(*Client)
 
 // WithPoolConfig overrides default pool settings for master and tenant DBs.
-func WithPoolConfig(maxIdle, maxOpen int, maxLifetime time.Duration) Option {
+func WithPoolConfig(maxIdle, maxOpen int, maxLifetime time.Duration, maxIdleTime time.Duration) Option {
 	return func(c *Client) {
 		if maxIdle > 0 {
 			c.poolCfg.MaxIdle = maxIdle
@@ -49,6 +50,9 @@ func WithPoolConfig(maxIdle, maxOpen int, maxLifetime time.Duration) Option {
 		}
 		if maxLifetime > 0 {
 			c.poolCfg.MaxLifetime = maxLifetime
+		}
+		if maxIdleTime > 0 {
+			c.poolCfg.MaxIdleTime = maxIdleTime
 		}
 	}
 }
@@ -60,6 +64,7 @@ func NewClient(connStr string, logger *slog.Logger, opts ...Option) (*Client, er
 			MaxIdle:     10,
 			MaxOpen:     50,
 			MaxLifetime: 30 * time.Minute,
+			MaxIdleTime: 0,
 		},
 		pools: make(map[string]*sql.DB),
 	}
@@ -78,6 +83,9 @@ func NewClient(connStr string, logger *slog.Logger, opts ...Option) (*Client, er
 	client.masterDB.SetMaxIdleConns(client.poolCfg.MaxIdle)
 	client.masterDB.SetMaxOpenConns(client.poolCfg.MaxOpen)
 	client.masterDB.SetConnMaxLifetime(client.poolCfg.MaxLifetime)
+	if client.poolCfg.MaxIdleTime > 0 {
+		client.masterDB.SetConnMaxIdleTime(client.poolCfg.MaxIdleTime)
+	}
 
 	// Cache base connection parameters to build DSN for tenant databases.
 	client.baseParms = parseDSN(connStr)
@@ -344,6 +352,9 @@ func (c *Client) getOrOpenDB(dbName string) (*sql.DB, error) {
 	db.SetMaxIdleConns(c.poolCfg.MaxIdle)
 	db.SetMaxOpenConns(c.poolCfg.MaxOpen)
 	db.SetConnMaxLifetime(c.poolCfg.MaxLifetime)
+	if c.poolCfg.MaxIdleTime > 0 {
+		db.SetConnMaxIdleTime(c.poolCfg.MaxIdleTime)
+	}
 	// TODO db.Exec("SET search_path = public, tenant_" + name)
 
 	// Verify connectivity with a short ping.

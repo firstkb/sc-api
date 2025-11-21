@@ -91,26 +91,34 @@ host=<DbHost> port=<DbPort> dbname=<DbName> user=<DbUser> password=<DbPass> sslm
 
   Эти параметры позволяют управлять размером и временем жизни пулов подключений `sql.DB` как для master‑БД, так и для tenant‑БД. Все они опциональны; при отсутствии используются значения по умолчанию.
 
-  - **`SCAPI_DB_POOL_MAX_IDLE`**
+  - **`SCAPI_DB_POOL_MAXIDLE`**
     - Назначение: максимальное число простаивающих (idle) соединений в пуле.
     - Тип: целое число (`int`).
     - Обязательность: нет.
     - Значение по умолчанию: `10`.
-    - Пример: `SCAPI_DB_POOL_MAX_IDLE=10`.
+    - Пример: `SCAPI_DB_POOL_MAXIDLE=10`.
 
-  - **`SCAPI_DB_POOL_MAX_OPEN`**
+  - **`SCAPI_DB_POOL_MAXOPEN`**
     - Назначение: максимальное число открытых соединений в пуле.
     - Тип: целое число (`int`).
     - Обязательность: нет.
     - Значение по умолчанию: `50`.
-    - Пример: `SCAPI_DB_POOL_MAX_OPEN=50`.
+    - Пример: `SCAPI_DB_POOL_MAXOPEN=50`.
 
-  - **`SCAPI_DB_POOL_MAX_LIFETIME`**
+  - **`SCAPI_DB_POOL_MAXLIFETIME`**
     - Назначение: максимальное время жизни одного соединения в пуле.
     - Тип: строка‑длительность в формате `time.Duration` (например, `30m`, `1h`).
     - Обязательность: нет.
     - Значение по умолчанию: `30m`.
-    - Пример: `SCAPI_DB_POOL_MAX_LIFETIME=30m`.
+    - Пример: `SCAPI_DB_POOL_MAXLIFETIME=30m`.
+
+  - **`SCAPI_DB_POOL_MAXIDLETIME`**
+    - Назначение: максимальное время простоя (idle) одного соединения в пуле перед его закрытием.
+    - Тип: строка‑длительность в формате `time.Duration` (например, `5m`, `10m`).
+    - Обязательность: нет.
+    - Значение по умолчанию: без ограничения (используется значение по умолчанию драйвера).
+    - Рекомендованное значение для продакшена: `10m`.
+    - Пример: `SCAPI_DB_POOL_MAXIDLETIME=10m`.
 
 - **2.4. Тестовые переменные**
   - **`SCAPI_TEST_PG_CONN`**
@@ -136,9 +144,10 @@ SCAPI_DB_PASSWORD=changeme
 SCAPI_DB_DBNAME=scapi_master
 
 # Optional DB pool settings
-# SCAPI_DB_POOL_MAX_IDLE=10
-# SCAPI_DB_POOL_MAX_OPEN=50
-# SCAPI_DB_POOL_MAX_LIFETIME=30m
+# SCAPI_DB_POOL_MAXIDLE=10
+# SCAPI_DB_POOL_MAXOPEN=50
+# SCAPI_DB_POOL_MAXLIFETIME=30m
+# SCAPI_DB_POOL_MAXIDLETIME=10m
 
 # (опционально) тестовая БД для интеграционных тестов
 # SCAPI_TEST_PG_CONN=host=localhost port=5432 dbname=scapi_test user=scapi_test password=secret sslmode=disable

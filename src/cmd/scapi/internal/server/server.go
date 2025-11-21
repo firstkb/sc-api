@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/pingsvc"
-	"github.com/firstkb/sc-api/internal/sqlserver"
+	appmw "github.com/firstkb/sc-api/cmd/scapi/internal/server/middleware"
+	"github.com/firstkb/sc-api/internal/httpx/mw"
+	"github.com/firstkb/sc-api/internal/httpx/router"
+	"github.com/firstkb/sc-api/internal/postgres"
 
 	"github.com/firstkb/sc-api/internal/config"
 )
@@ -17,6 +20,7 @@ import (
 type Config struct {
 	HostApp string         `json:"hostapp"`
 	Origin  string         `json:"origin"`
+	Timeout int            `json:"timeout"` // seconds
 	DB      DatabaseConfig `json:"db"`
 }
 
@@ -31,17 +35,19 @@ type DatabaseConfig struct {
 }
 
 type PoolConfig struct {
-	MaxIdle int    `json:"maxidle"`
-	MaxOpen int    `json:"maxopen"`
-	MaxLife string `json:"maxlifetime"`
+	MaxIdle     int    `json:"maxidle"`
+	MaxOpen     int    `json:"maxopen"`
+	MaxLife     string `json:"maxlifetime"`
+	MaxIdleTime string `json:"maxidletime"`
 }
 
 type Server struct {
 	config     *Config
 	logger     *slog.Logger
 	httpServer *http.Server
-	sqlClient  *sqlserver.Client
+	sqlClient  *postgres.Client
 	pingsvc    *pingsvc.PingService
+	classifier *router.Classifier
 }
 
 func NewServer(config *config.Config, logger *slog.Logger) (*Server, error) {
@@ -57,20 +63,43 @@ func NewServer(config *config.Config, logger *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 
-	handler := server.addRoutes()
-	handler = server.addMiddleware(handler, c.Origin)
+	ps, err := pingsvc.NewService(server.sqlClient, config, logger)
+	if err != nil {
+		return nil, err
+	}
+	server.pingsvc = ps
+
+	mux, class := server.buildRoutes()
+	server.classifier = class
+
+	// Строим цепочку middleware вокруг mux.
+	var handler http.Handler = mux
+
+	// ВНУТРИ: обработка домена/аутентификации/логов.
+	// Порядок (изнутри наружу при выполнении): Recover → RequestID → Timeout → AccessLog → CORS → Claims.
+	handler = appmw.Recover(server.logger)(handler)
+	handler = appmw.RequestID()(handler)
+	// TODO: get timeout from config
+	handler = appmw.Timeout(time.Duration(server.config.Timeout) * time.Second)(handler)
+	handler = appmw.AccessLog(server.logger)(handler)
+
+	corsCfg := appmw.CORSConfig{
+		AllowedOrigins:   []string{c.Origin},
+		AllowedMethods:   []string{http.MethodGet, http.MethodPut},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+		Debug:            false,
+	}
+	handler = appmw.CORS(server.logger, corsCfg)(handler)
+	handler = appmw.Claims(server.logger)(handler)
+
+	// СНАРУЖИ: классификатор маршрута, который первым ставит Tier/RouteID в контекст.
+	handler = mw.Classifier(class)(handler)
 
 	server.httpServer = &http.Server{
 		Addr:    server.config.HostApp,
 		Handler: handler,
 	}
-
-	pingsvc, err := pingsvc.NewService(server.sqlClient, config, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	server.pingsvc = pingsvc
 
 	return server, nil
 }
@@ -105,9 +134,10 @@ func (srv *Server) initialize() error {
 
 	// Resolve DB pool settings with sane defaults.
 	const (
-		defaultPoolMaxIdle = 10
-		defaultPoolMaxOpen = 50
-		defaultPoolLife    = time.Minute * 30
+		defaultPoolMaxIdle     = 10
+		defaultPoolMaxOpen     = 50
+		defaultPoolMaxLife     = time.Minute * 30
+		defaultPoolMaxIdleTime = time.Duration(0) // 0 = без ограничения по idle-time
 	)
 
 	poolMaxIdle := srv.config.DB.PoolConfig.MaxIdle
@@ -119,19 +149,32 @@ func (srv *Server) initialize() error {
 		poolMaxOpen = defaultPoolMaxOpen
 	}
 
-	poolLife := defaultPoolLife
+	poolLife := defaultPoolMaxLife
 	if srv.config.DB.PoolConfig.MaxLife != "" {
 		if d, err := time.ParseDuration(srv.config.DB.PoolConfig.MaxLife); err == nil {
 			poolLife = d
 		} else {
-			srv.logger.Warn("invalid DB pool max lifetime, using default", "value", srv.config.DB.PoolConfig.MaxLife, "error", err)
+			srv.logger.Warn("invalid DB pool max lifetime, using default",
+				"value", srv.config.DB.PoolConfig.MaxLife, "error", err)
 		}
 	}
 
-	client, err := sqlserver.NewClient(conn, srv.logger,
-		sqlserver.WithPoolConfig(poolMaxIdle, poolMaxOpen, poolLife))
+	poolIdleTime := defaultPoolMaxIdleTime
+	if srv.config.DB.PoolConfig.MaxIdleTime != "" {
+		if d, err := time.ParseDuration(srv.config.DB.PoolConfig.MaxIdleTime); err == nil {
+			poolIdleTime = d
+		} else {
+			srv.logger.Warn("invalid DB pool max idle time, using default",
+				"value", srv.config.DB.PoolConfig.MaxIdleTime, "error", err)
+		}
+	}
+
+	opts := []postgres.Option{
+		postgres.WithPoolConfig(poolMaxIdle, poolMaxOpen, poolLife, poolIdleTime),
+	}
+	client, err := postgres.NewClient(conn, srv.logger, opts...)
 	if err != nil {
-		return fmt.Errorf("failed to create a SQL Server client: %v", err)
+		return fmt.Errorf("failed to create a PostgreSQL client: %v", err)
 	}
 
 	srv.sqlClient = client

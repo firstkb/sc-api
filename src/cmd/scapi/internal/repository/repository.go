@@ -5,23 +5,23 @@ import (
 	"log/slog"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/utils"
-	"github.com/firstkb/sc-api/internal/sqlserver"
+	"github.com/firstkb/sc-api/internal/postgres"
 )
 
 type Repository struct {
-	Client *sqlserver.Client
+	Client *postgres.Client
 	Logger *slog.Logger
 	Claim  *utils.Claim
 }
 
-func NewRepository(client *sqlserver.Client, logger *slog.Logger) Repository {
+func NewRepository(client *postgres.Client, logger *slog.Logger) Repository {
 	return Repository{
 		Client: client,
 		Logger: logger,
 	}
 }
 
-func (r *Repository) OpenDB(ctx context.Context) (*sqlserver.Database, error) {
+func (r *Repository) OpenDB(ctx context.Context) (*postgres.Database, error) {
 	claim, err := utils.GetClaim(ctx)
 	if err != nil {
 		return nil, err

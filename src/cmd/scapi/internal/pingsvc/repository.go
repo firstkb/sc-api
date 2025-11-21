@@ -5,14 +5,14 @@ import (
 	"log/slog"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/repository"
-	"github.com/firstkb/sc-api/internal/sqlserver"
+	"github.com/firstkb/sc-api/internal/postgres"
 )
 
 type Repo struct {
 	repository.Repository
 }
 
-func NewRepo(client *sqlserver.Client, logger *slog.Logger) *Repo {
+func NewRepo(client *postgres.Client, logger *slog.Logger) *Repo {
 	repository := repository.NewRepository(client, logger)
 	return &Repo{
 		Repository: repository,

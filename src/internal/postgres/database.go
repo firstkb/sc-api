@@ -1,4 +1,4 @@
-package sqlserver
+package postgres
 
 import (
 	"context"

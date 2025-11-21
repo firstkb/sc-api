@@ -4,9 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/firstkb/sc-api/internal/sqlserver"
-
 	"github.com/firstkb/sc-api/internal/config"
+	"github.com/firstkb/sc-api/internal/postgres"
 )
 
 type Request struct {
@@ -18,7 +17,7 @@ type PingService struct {
 	repository *Repo
 }
 
-func NewService(sqlClient *sqlserver.Client, config *config.Config, logger *slog.Logger) (*PingService, error) {
+func NewService(sqlClient *postgres.Client, config *config.Config, logger *slog.Logger) (*PingService, error) {
 
 	return &PingService{
 		logger:     logger,

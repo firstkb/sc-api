@@ -1,4 +1,4 @@
-package sqlserver
+package postgres
 
 type retryableFunc[T any] func() (T, error)
 
