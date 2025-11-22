@@ -7,13 +7,11 @@ import (
 	"os"
 	"testing"
 	"time"
-
-	"github.com/firstkb/sc-api/internal/config"
 )
 
 // TestMiddlewareChain_Mock проверяет, что базовая цепочка middleware не ломает health-route.
 func TestMiddlewareChain_Mock(t *testing.T) {
-	cfg := &config.Config{}
+	cfg := mustTestConfig(t)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	srv, err := NewServer(cfg, logger)

@@ -8,11 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/firstkb/sc-api/cmd/scapi/internal/pingsvc"
-	appmw "github.com/firstkb/sc-api/cmd/scapi/internal/server/middleware"
-	"github.com/firstkb/sc-api/internal/httpx/mw"
 	"github.com/firstkb/sc-api/internal/httpx/router"
 	"github.com/firstkb/sc-api/internal/postgres"
+
+	"github.com/firstkb/sc-api/cmd/scapi/internal/pingsvc"
 
 	"github.com/firstkb/sc-api/internal/config"
 )
@@ -50,60 +49,21 @@ type Server struct {
 	config     *Config
 	logger     *slog.Logger
 	httpServer *http.Server
+	handler    http.Handler
 	sqlClient  *postgres.Client
 	pingsvc    *pingsvc.PingService
 	classifier *router.Classifier
 }
 
-func NewServer(config *config.Config, logger *slog.Logger) (*Server, error) {
-	var c Config
-	config.Unmarshal("", &c)
-
-	server := &Server{
-		logger: logger,
-		config: &c,
-	}
-
-	if err := server.initialize(); err != nil {
-		return nil, err
-	}
-
-	ps, err := pingsvc.NewService(server.sqlClient, config, logger)
+func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
+	server, err := Bootstrap(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
-	server.pingsvc = ps
-
-	mux, class := server.buildRoutes()
-	server.classifier = class
-
-	// Строим цепочку middleware вокруг mux.
-	var handler http.Handler = mux
-
-	// ВНУТРИ: обработка домена/аутентификации/логов.
-	// Порядок (изнутри наружу при выполнении): Recover → RequestID → Timeout → AccessLog → CORS → Claims.
-	handler = appmw.Recover(server.logger)(handler)
-	handler = appmw.RequestID()(handler)
-	// TODO: get timeout from config
-	handler = appmw.Timeout(time.Duration(server.config.Timeout) * time.Second)(handler)
-	handler = appmw.AccessLog(server.logger)(handler)
-	handler = appmw.Claims(server.logger, server.config.Token.Provider)(handler)
-
-	corsCfg := appmw.CORSConfig{
-		AllowedOrigins:   []string{c.Origin},
-		AllowedMethods:   []string{http.MethodGet, http.MethodPut},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
-		AllowCredentials: true,
-		Debug:            false,
-	}
-	handler = appmw.CORS(server.logger, corsCfg)(handler)
-
-	// СНАРУЖИ: классификатор маршрута, который первым ставит Tier/RouteID в контекст.
-	handler = mw.Classifier(class)(handler)
 
 	server.httpServer = &http.Server{
 		Addr:    server.config.HostApp,
-		Handler: handler,
+		Handler: server.handler,
 	}
 
 	return server, nil
@@ -142,7 +102,7 @@ func (srv *Server) initialize() error {
 		defaultPoolMaxIdle     = 10
 		defaultPoolMaxOpen     = 50
 		defaultPoolMaxLife     = time.Minute * 30
-		defaultPoolMaxIdleTime = time.Duration(0) // 0 = без ограничения по idle-time
+		defaultPoolMaxIdleTime = time.Duration(0) // 0 = without idle time limit
 	)
 
 	poolMaxIdle := srv.config.DB.PoolConfig.MaxIdle
