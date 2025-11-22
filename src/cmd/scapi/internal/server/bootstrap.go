@@ -48,7 +48,7 @@ func (srv *Server) buildHTTPHandler(mux http.Handler) http.Handler {
 	handler := appmw.Recover(srv.logger)(mux)
 	handler = appmw.RequestID()(handler)
 	handler = appmw.Timeout(time.Duration(srv.config.Timeout) * time.Second)(handler)
-	handler = appmw.AccessLog(srv.logger)(handler)
+	handler = appmw.AccessLog(srv.logger, srv.config.MW.AccessLog)(handler)
 	handler = appmw.Claims(srv.logger, srv.config.Token.Provider)(handler)
 
 	if srv.config.Origin != "" {

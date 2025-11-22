@@ -6,12 +6,18 @@ import (
 	"time"
 )
 
-// AccessLog пишет простой access-log с использованием slog-логгера.
-func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
+// AccessLog writes a simple access-log using the slog logger.
+func AccessLog(logger *slog.Logger, enabled bool) func(http.Handler) http.Handler {
+	if !enabled {
+		return func(next http.Handler) http.Handler {
+			return next
+		}
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			// Оборачиваем ResponseWriter, чтобы получить статус-код.
+			// Wrap ResponseWriter to get the status code.
 			ww := &responseWriterWrapper{ResponseWriter: w, status: http.StatusOK}
 
 			next.ServeHTTP(ww, r)

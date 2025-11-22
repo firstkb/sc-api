@@ -22,6 +22,11 @@ type Config struct {
 	Timeout int            `json:"timeout"` // seconds
 	Token   TokenConfig    `json:"token"`
 	DB      DatabaseConfig `json:"db"`
+	MW      MWConfig       `json:"mw"`
+}
+
+type MWConfig struct {
+	AccessLog bool `json:"accesslog"`
 }
 
 type TokenConfig struct {

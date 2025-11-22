@@ -160,7 +160,9 @@ SCAPI_DB_DBNAME=scapi_master
 # SCAPI_DB_POOL_MAXIDLETIME=10m
 
 
-#SCAPI_TOKEN_PROVIDER=cognito
+# SCAPI_TOKEN_PROVIDER=cognito
+
+# SCAPI_MW_ACCESSLOG=true
 
 # (опционально) тестовая БД для интеграционных тестов
 # SCAPI_TEST_PG_CONN=host=localhost port=5432 dbname=scapi_test user=scapi_test password=secret sslmode=disable
