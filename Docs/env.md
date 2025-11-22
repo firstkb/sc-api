@@ -47,6 +47,16 @@
     - Обязательность: да, для корректной работы CORS.
     - Пример: `SCAPI_ORIGIN=https://app.safeconstructors.com`.
 
+- **2.2.1. Парсинг токена**
+  - **`SCAPI_TOKEN_PROVIDER`**
+    - Назначение: определяет, как парсятся JWT-клеймы в middleware (`internal` или `cognito`).
+    - Тип: строка.
+    - Обязательность: нет (по умолчанию `internal`).
+    - Поведение:
+      - `internal` — ожидается, что токен содержит `tenant_id`, `user_id`, `email`.
+      - `cognito` — используется Cognito JWT (поля `custom:tenant_id`, `custom:user_id`, `email`); при отсутствии кастомных полей fallback на `username`.
+    - Пример: `SCAPI_TOKEN_PROVIDER=cognito`.
+
 - **2.3. Настройки подключения к PostgreSQL**
 
 Конфигурация БД маппится на поля структуры `server.Config` (`json:"host"`, `json:"port"`, `json:"username"`, `json:"password"`, `json:"dbname"` и др.), которые заполняются через конфиг/ENV. На их основе формируется строка подключения:
@@ -148,6 +158,9 @@ SCAPI_DB_DBNAME=scapi_master
 # SCAPI_DB_POOL_MAXOPEN=50
 # SCAPI_DB_POOL_MAXLIFETIME=30m
 # SCAPI_DB_POOL_MAXIDLETIME=10m
+
+
+#SCAPI_TOKEN_PROVIDER=cognito
 
 # (опционально) тестовая БД для интеграционных тестов
 # SCAPI_TEST_PG_CONN=host=localhost port=5432 dbname=scapi_test user=scapi_test password=secret sslmode=disable

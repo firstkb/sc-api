@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+
+	"github.com/firstkb/sc-api/internal/httpx/apperr"
 )
 
 type TargetFunc[In any, Out any] func(context.Context, *http.Request, In) (Out, error)
@@ -14,6 +16,7 @@ type Response struct {
 	Status  string `json:"status"`
 	Data    any    `json:"data,omitempty"`
 	Message string `json:"message,omitempty"`
+	Code    string `json:"code,omitempty"`
 }
 
 func HandleJson[In any, Out any](f TargetFunc[In, Out], logger *slog.Logger) http.Handler {
@@ -39,7 +42,10 @@ func HandleJson[In any, Out any](f TargetFunc[In, Out], logger *slog.Logger) htt
 		// Call out to target function
 		out, err := f(r.Context(), r, in)
 		if err != nil {
-			encode(w, http.StatusBadRequest, err.Error())
+			appErr := apperr.ToHTTP(err)
+			if encodeErr := encode(w, appErr.StatusCode, appErr); encodeErr != nil {
+				logger.Error("failed to encode error response", "error", encodeErr)
+			}
 			return
 		}
 
@@ -57,10 +63,13 @@ func encode[Out any](w http.ResponseWriter, status int, out Out) error {
 		Status: "ok",
 		Data:   out,
 	}
-	if status != 200 {
-		resp = Response{
-			Status:  "error",
-			Message: fmt.Sprintf("%v", out),
+	if status != http.StatusOK {
+		resp = Response{Status: "error"}
+		if ae, ok := any(out).(*apperr.AppError); ok && ae != nil {
+			resp.Code = ae.Code
+			resp.Message = ae.Message
+		} else {
+			resp.Message = fmt.Sprintf("%v", out)
 		}
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

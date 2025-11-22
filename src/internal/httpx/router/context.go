@@ -5,4 +5,5 @@ type ctxKey string
 const (
 	CtxKeyTier    ctxKey = "httpx.tier"
 	CtxKeyRouteID ctxKey = "httpx.route_id"
+	CtxKeyDomain  ctxKey = "httpx.domain"
 )

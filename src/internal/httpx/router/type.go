@@ -14,6 +14,7 @@ type RouteID string
 type Route struct {
 	ID     RouteID
 	Method string // "GET", "POST", ...
-	Path   string // "GET /ping" style
+	Path   string // "METHOD /path" style
+	URI    string // "/path"
 	Tier   Tier
 }

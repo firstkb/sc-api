@@ -3,35 +3,45 @@ package utils
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/golang-jwt/jwt"
+
+	"github.com/firstkb/sc-api/internal/httpx/claims"
 )
 
 type Claim struct {
-	TenantID   string
-	Email      string
-	Claims     jwt.MapClaims
-	ServerName string
+	TenantID string
+	UserID   string
+	Email    string
+	Claims   jwt.MapClaims
 }
 
-type contextKey string
+const (
+	tokenProviderInternal = "internal"
+	tokenProviderCognito  = "cognito"
+)
 
-const ClaimKey contextKey = "claim"
-
-// GetClaim return Claim from Context
+// GetClaim returns Claim from Context by extracting value from httpx/claims slot.
 func GetClaim(ctx context.Context) (*Claim, error) {
-	claim, ok := ctx.Value(ClaimKey).(*Claim)
-	if !ok {
+	if ctx == nil {
 		return nil, errors.New("no claim in context")
 	}
-	return claim, nil
+
+	if raw := claims.FromContext(ctx); raw != nil {
+		if c, ok := raw.(*Claim); ok && c != nil {
+			return c, nil
+		}
+	}
+
+	return nil, errors.New("no claim in context")
 }
 
-// SetClaim parce token and set Claim to Context
-func CreateContextWithClaim(r *http.Request) (context.Context, error) {
+// CreateContextWithClaim parses the token and returns a new Context with Claim,
+// saving it in the universal httpx/claims slot.
+func CreateContextWithClaim(r *http.Request, provider string) (context.Context, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		return nil, errors.New("authorization header missing")
@@ -56,53 +66,125 @@ func CreateContextWithClaim(r *http.Request) (context.Context, error) {
 		return nil, errors.New("invalid token")
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
+	jwtClaims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, errors.New("invalid token claims")
 	}
 
-	username, ok := claims["username"].(string)
-	if !ok {
-		return nil, errors.New("username not found in token")
-	}
-
-	tenantID, email, err := parseUsername(username)
+	claim, err := buildClaim(jwtClaims, r, provider)
 	if err != nil {
 		return nil, err
 	}
 
-	originVal := r.Header.Get("Origin")
-	var serverName string
-	if originVal == "" {
-		serverName = "PWA"
-	} else {
-		parsed, err := url.Parse(originVal)
-		if err == nil && parsed.Host != "" {
-			serverName = parsed.Host
-		} else {
-			serverName = strings.TrimPrefix(originVal, "http://")
-			serverName = strings.TrimPrefix(serverName, "https://")
-			serverName = strings.TrimSuffix(serverName, "/")
-		}
-	}
-
-	claim := &Claim{
-		TenantID:   tenantID,
-		Email:      email,
-		Claims:     claims,
-		ServerName: serverName,
-	}
-
-	// set Claim to Context
-	ctx := context.WithValue(r.Context(), ClaimKey, claim)
+	ctx := claims.With(r.Context(), claim)
 	return ctx, nil
 }
 
-// parseUsername Split tenant_id and email
+// parseUsername splits tenant_id and email (format tenant|email).
 func parseUsername(username string) (string, string, error) {
 	parts := strings.Split(username, "|")
 	if len(parts) != 2 {
 		return "", "", errors.New("invalid username format")
 	}
 	return parts[0], parts[1], nil
+}
+
+func buildClaim(jwtClaims jwt.MapClaims, r *http.Request, provider string) (*Claim, error) {
+	var (
+		tenantID string
+		email    string
+		userID   string
+		err      error
+	)
+
+	switch normalizeProvider(provider) {
+	case tokenProviderCognito:
+		tenantID, email, userID, err = parseCognitoClaims(jwtClaims)
+	default:
+		tenantID, email, userID, err = parseInternalClaims(jwtClaims)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &Claim{
+		TenantID: tenantID,
+		UserID:   userID,
+		Email:    email,
+		Claims:   jwtClaims,
+	}, nil
+}
+
+func parseInternalClaims(jwtClaims jwt.MapClaims) (string, string, string, error) {
+	tenantID, err := mustStringClaim(jwtClaims, "tenant_id")
+	if err != nil {
+		return "", "", "", err
+	}
+	email, err := mustStringClaim(jwtClaims, "email")
+	if err != nil {
+		return "", "", "", err
+	}
+	userID, err := mustStringClaim(jwtClaims, "user_id")
+	if err != nil {
+		return "", "", "", err
+	}
+
+	return tenantID, email, userID, nil
+}
+
+func parseCognitoClaims(jwtClaims jwt.MapClaims) (string, string, string, error) {
+	username := stringClaim(jwtClaims, "username")
+	tenantID := stringClaim(jwtClaims, "custom:tenant_id")
+	email := stringClaim(jwtClaims, "email")
+	userID := stringClaim(jwtClaims, "custom:user_id")
+	if userID == "" {
+		userID = stringClaim(jwtClaims, "sub")
+	}
+
+	if tenantID == "" || email == "" {
+		var err error
+		tenantID, email, err = parseUsername(username)
+		if err != nil {
+			return "", "", "", err
+		}
+	}
+
+	if tenantID == "" || email == "" {
+		return "", "", "", errors.New("insufficient claims for cognito token")
+	}
+
+	if userID == "" {
+		userID = "undefined"
+	}
+
+	return tenantID, email, userID, nil
+}
+
+func mustStringClaim(m jwt.MapClaims, key string) (string, error) {
+	value := stringClaim(m, key)
+	if value == "" {
+		return "", fmt.Errorf("claim %s not found in token", key)
+	}
+	return value, nil
+}
+
+func stringClaim(m jwt.MapClaims, key string) string {
+	if v, ok := m[key]; ok {
+		switch val := v.(type) {
+		case string:
+			return val
+		case fmt.Stringer:
+			return val.String()
+		}
+	}
+	return ""
+}
+
+func normalizeProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case tokenProviderCognito:
+		return tokenProviderCognito
+	default:
+		return tokenProviderInternal
+	}
 }

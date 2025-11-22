@@ -21,7 +21,12 @@ type Config struct {
 	HostApp string         `json:"hostapp"`
 	Origin  string         `json:"origin"`
 	Timeout int            `json:"timeout"` // seconds
+	Token   TokenConfig    `json:"token"`
 	DB      DatabaseConfig `json:"db"`
+}
+
+type TokenConfig struct {
+	Provider string `json:"provider"`
 }
 
 type DatabaseConfig struct {
@@ -82,6 +87,7 @@ func NewServer(config *config.Config, logger *slog.Logger) (*Server, error) {
 	// TODO: get timeout from config
 	handler = appmw.Timeout(time.Duration(server.config.Timeout) * time.Second)(handler)
 	handler = appmw.AccessLog(server.logger)(handler)
+	handler = appmw.Claims(server.logger, server.config.Token.Provider)(handler)
 
 	corsCfg := appmw.CORSConfig{
 		AllowedOrigins:   []string{c.Origin},
@@ -91,7 +97,6 @@ func NewServer(config *config.Config, logger *slog.Logger) (*Server, error) {
 		Debug:            false,
 	}
 	handler = appmw.CORS(server.logger, corsCfg)(handler)
-	handler = appmw.Claims(server.logger)(handler)
 
 	// СНАРУЖИ: классификатор маршрута, который первым ставит Tier/RouteID в контекст.
 	handler = mw.Classifier(class)(handler)

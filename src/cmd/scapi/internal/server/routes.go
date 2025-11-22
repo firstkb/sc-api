@@ -32,11 +32,11 @@ func (srv *Server) buildRoutes() (*http.ServeMux, *router.Classifier) {
 		}))
 
 	b.Handle("PING_GET", "GET", "/ping", router.TierSecure,
-		handler.HandleJson(func(ctx context.Context, _ *http.Request, _ any) (*pingsvc.Ping, error) {
+		handler.HandleJson(func(ctx context.Context, r *http.Request, in any) (*pingsvc.Ping, error) {
 			info, err := srv.pingsvc.GetPing(ctx)
 			if err != nil {
 				return nil, apperr.WrapAndLog(srv.logger, ctx, "PING_GET",
-					http.StatusInternalServerError, "cannot get ping", err, srv.ClaimForLog(ctx)...)
+					http.StatusInternalServerError, "cannot get ping", err, srv.FieldsForLog(ctx, r, in)...)
 			}
 			return info, nil
 		}, srv.logger))

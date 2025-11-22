@@ -51,7 +51,6 @@ func CORS(logger *slog.Logger, config CORSConfig) func(http.Handler) http.Handle
 				}
 				w.Header().Set("Access-Control-Max-Age", "86400")
 				w.WriteHeader(http.StatusNoContent)
-				next.ServeHTTP(w, r)
 				return
 			}
 

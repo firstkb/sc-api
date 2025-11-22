@@ -8,12 +8,14 @@ import (
 	"github.com/firstkb/sc-api/internal/postgres"
 )
 
+// Repository is the repository for the application.
 type Repository struct {
 	Client *postgres.Client
 	Logger *slog.Logger
 	Claim  *utils.Claim
 }
 
+// NewRepository creates a new repository.
 func NewRepository(client *postgres.Client, logger *slog.Logger) Repository {
 	return Repository{
 		Client: client,
@@ -21,7 +23,8 @@ func NewRepository(client *postgres.Client, logger *slog.Logger) Repository {
 	}
 }
 
-func (r *Repository) OpenDB(ctx context.Context) (*postgres.Database, error) {
+// OpenDBFromClaim open database from claim in context.
+func (r *Repository) OpenDBFromClaim(ctx context.Context) (*postgres.Database, error) {
 	claim, err := utils.GetClaim(ctx)
 	if err != nil {
 		return nil, err
@@ -34,5 +37,14 @@ func (r *Repository) OpenDB(ctx context.Context) (*postgres.Database, error) {
 
 	r.Claim = claim
 
+	return db, nil
+}
+
+// OpenDBByTenantID open database by explicitly passed tenantID, without using claim.
+func (r *Repository) OpenDBByTenantID(ctx context.Context, tenantID string) (*postgres.Database, error) {
+	db, err := r.Client.OpenDB(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
 	return db, nil
 }
