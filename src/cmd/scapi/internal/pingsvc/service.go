@@ -2,9 +2,11 @@ package pingsvc
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/firstkb/sc-api/internal/config"
+	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 	"github.com/firstkb/sc-api/internal/postgres"
 )
 
@@ -27,32 +29,52 @@ func NewService(sqlClient *postgres.Client, config *config.Config, logger *slog.
 
 func (s *PingService) GetPing(ctx context.Context) (*Ping, error) {
 
+	tenantID := requestctx.TenantID(ctx)
+	if tenantID == "" {
+		return nil, errors.New("tenant ID not found")
+	}
+
 	ping, err := s.repository.getPing(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	users100, err := s.repository.getUsers(ctx, "100")
+	users, err := s.repository.getUsers(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 
-	users101, err := s.repository.getUsers(ctx, "101")
-	if err != nil {
-		return nil, err
+	tenantInfo, ok := requestctx.Tenant(ctx)
+	if !ok {
+		return nil, errors.New("tenant not found")
 	}
-
-	users102, err := s.repository.getUsers(ctx, "102")
-	if err != nil {
-		return nil, err
+	identityInfo, ok := requestctx.Identity(ctx)
+	if !ok {
+		//return nil, errors.New("identity not found")
+		identityInfo = requestctx.IdentityInfo{
+			ID: "anonymous",
+		}
+	}
+	claimsInfo, ok := requestctx.Claims(ctx)
+	if !ok {
+		return nil, errors.New("claims ot found")
+	}
+	userInfo, ok := requestctx.User(ctx)
+	if !ok {
+		//return nil, errors.New("user not found")
+		userInfo = requestctx.UserInfo{
+			ID: "anonymous",
+		}
 	}
 
 	return &Ping{
-		Message: ping,
-		Users: map[string][]map[string]any{
-			"100": users100,
-			"101": users101,
-			"102": users102,
-		},
+		Message:  ping,
+		Users:    users,
+		TenantId: claimsInfo.TenantID,
+		Tenant:   tenantInfo,
+		Identity: identityInfo,
+		Claims:   claimsInfo,
+		Plan:     tenantInfo.Plan,
+		User:     userInfo,
 	}, nil
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/utils"
+	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 )
 
 func (srv *Server) FieldsForLog(ctx context.Context, r *http.Request, in any) []any {
@@ -18,16 +19,12 @@ func (srv *Server) FieldsForLog(ctx context.Context, r *http.Request, in any) []
 		)
 	}
 
-	if _, tier, err := utils.GetRouteInfo(ctx); err == nil {
+	if routeInfo, ok := requestctx.Route(ctx); ok {
 		fields = append(fields,
-			//"routeID", string(routeID),
-			"tier", string(tier),
+			//"routeID", string(routeInfo.ID),
+			"tier", string(routeInfo.Tier),
+			"domain", routeInfo.Domain,
 		)
-	}
-
-	domain := utils.GetRouteDomain(ctx)
-	if domain != "" && domain != "undefined" {
-		fields = append(fields, "domain", domain)
 	}
 
 	query := r.URL.RawQuery

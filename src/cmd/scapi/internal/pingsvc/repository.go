@@ -28,7 +28,7 @@ func (r *Repo) getPing(ctx context.Context) (string, error) {
 }
 
 func (r *Repo) getUsers(ctx context.Context, tenantID string) ([]map[string]any, error) {
-	db, err := r.OpenDBByTenantID(ctx, tenantID)
+	db, err := r.OpenDBFromTenant(ctx)
 	if err != nil {
 		return nil, err
 	}

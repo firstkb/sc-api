@@ -104,7 +104,7 @@ func NewClient(connStr string, logger *slog.Logger, opts ...Option) (*Client, er
 	if err := client.masterDB.PingContext(ctx); err != nil {
 		client.logger.Error(fmt.Sprintf("database connection failed: %v", err))
 	} else {
-		client.loadDbNames()
+		//client.loadDbNames()
 	}
 
 	return client, nil
@@ -141,7 +141,7 @@ func (c *Client) OpenDB(ctx context.Context, tenantId string) (*Database, error)
 		return nil, fmt.Errorf("invalid tenant id: '%s'", tenantId)
 	}
 
-	db, err := c.getOrOpenDB(name)
+	db, err := c.getOrOpenDB(name, "")
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +151,19 @@ func (c *Client) OpenDB(ctx context.Context, tenantId string) (*Database, error)
 		ctx:    ctx,
 		db:     db,
 		Name:   name,
+	}, nil
+}
+
+func (c *Client) OpenDBTenant(ctx context.Context, dbName string, dbInstanceCode string) (*Database, error) {
+	db, err := c.getOrOpenDB(dbName, dbInstanceCode)
+	if err != nil {
+		return nil, fmt.Errorf("open tenant db: %w", err)
+	}
+	return &Database{
+		client: c,
+		ctx:    ctx,
+		db:     db,
+		Name:   dbName,
 	}, nil
 }
 
@@ -323,7 +336,7 @@ func (c *Client) ApplyMigrations(ctx context.Context, logger *slog.Logger) error
 // getOrOpenDB returns an existing *sql.DB for the given database name or
 // lazily creates a new one using the same connection parameters as master DB
 // but with overridden dbname.
-func (c *Client) getOrOpenDB(dbName string) (*sql.DB, error) {
+func (c *Client) getOrOpenDB(dbName string, _ string) (*sql.DB, error) {
 	name := strings.TrimSpace(dbName)
 	if name == "" {
 		return nil, fmt.Errorf("tenant db name is required")

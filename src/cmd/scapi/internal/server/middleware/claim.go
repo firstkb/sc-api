@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/utils"
+	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 	"github.com/firstkb/sc-api/internal/httpx/router"
 )
 
@@ -12,13 +14,14 @@ import (
 func Claims(logger *slog.Logger, provider string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			_, tier, err := utils.GetRouteInfo(r.Context())
-			if err != nil {
-				logger.Error("CLAIMS: Route info not found", "path", r.URL.Path, "error", err)
-				http.Error(w, "Forbidden", http.StatusForbidden)
+			routeInfo, ok := requestctx.Route(r.Context())
+			if !ok {
+				logger.Error("CLAIMS: route info missing", "error", errors.New("route info not found in context"))
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 				return
-			} else if tier != router.TierSecure {
+			}
+
+			if routeInfo.Tier != router.TierSecure {
 				next.ServeHTTP(w, r)
 				return
 			}

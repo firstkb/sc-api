@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt"
 
 	"github.com/firstkb/sc-api/internal/httpx/claims"
+	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 )
 
 type Claim struct {
@@ -28,6 +29,14 @@ const (
 func GetClaim(ctx context.Context) (*Claim, error) {
 	if ctx == nil {
 		return nil, errors.New("no claim in context")
+	}
+
+	if rc, ok := requestctx.Claims(ctx); ok {
+		return &Claim{
+			TenantID: rc.TenantID,
+			UserID:   rc.UserID,
+			Email:    rc.Email,
+		}, nil
 	}
 
 	if raw := claims.FromContext(ctx); raw != nil {
@@ -76,7 +85,11 @@ func CreateContextWithClaim(r *http.Request, provider string) (context.Context, 
 		return nil, err
 	}
 
-	ctx := claims.With(r.Context(), claim)
+	ctx := requestctx.WithClaims(r.Context(), requestctx.ClaimsInfo{
+		TenantID: claim.TenantID,
+		UserID:   claim.UserID,
+		Email:    claim.Email,
+	})
 	return ctx, nil
 }
 

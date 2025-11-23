@@ -6,6 +6,7 @@ import (
 
 	"log/slog"
 
+	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 	"github.com/firstkb/sc-api/internal/httpx/router"
 )
 
@@ -20,13 +21,13 @@ type CORSConfig struct {
 func CORS(logger *slog.Logger, config CORSConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			tier, ok := r.Context().Value(router.CtxKeyTier).(router.Tier)
+			route, ok := requestctx.Route(r.Context())
 			if !ok {
-				logger.Error("CORS: Tier not found", "path", r.URL.Path)
+				logger.Error("CORS: route info not found", "path", r.URL.Path)
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
+			tier := route.Tier
 
 			if tier == router.TierHealth {
 				next.ServeHTTP(w, r)

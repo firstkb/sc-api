@@ -2,13 +2,14 @@ package tenantsvc
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/firstkb/sc-api/cmd/scapi/internal/utils"
 	"github.com/firstkb/sc-api/internal/config"
+	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 	"github.com/firstkb/sc-api/internal/postgres"
 )
 
@@ -60,7 +61,11 @@ func NewService(sqlClient *postgres.Client, cfg *config.Config, logger *slog.Log
 }
 
 func (s *ServiceTenantProvider) GetCurrentTenant(ctx context.Context) (*Tenant, error) {
-	tenant, err := s.GetByID(ctx, utils.GetTenantID(ctx))
+	tenantCtx, ok := requestctx.Tenant(ctx)
+	if !ok {
+		return nil, errors.New("tenant context not found")
+	}
+	tenant, err := s.GetByID(ctx, tenantCtx.ID)
 	if err != nil {
 		return nil, err
 	}

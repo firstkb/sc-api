@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/utils"
+	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 	"github.com/firstkb/sc-api/internal/httpx/router"
 )
 
@@ -18,11 +19,7 @@ var (
 	ErrInvalidRouteIDForPublicTenant = errors.New("invalid route ID for public tenant validation")
 )
 
-func (s *ServiceTenantProvider) Validate(ctx context.Context, tier router.Tier, routeID router.RouteID, r *http.Request) (context.Context, error) {
-	domain := utils.GetRouteDomain(ctx)
-	if domain == "" {
-		return ctx, ErrOriginMissing
-	}
+func (s *ServiceTenantProvider) Validate(ctx context.Context, tier router.Tier, routeID router.RouteID, domain string, r *http.Request) (context.Context, error) {
 
 	var tenant *Tenant
 	var err error
@@ -52,8 +49,15 @@ func (s *ServiceTenantProvider) Validate(ctx context.Context, tier router.Tier, 
 		return ctx, ErrTenantNotActive
 	}
 
-	// TODO: set tenant in context
-	ctx = utils.WithTenantID(ctx, tenant.ID)
+	ctx = requestctx.WithTenant(ctx, requestctx.TenantInfo{
+		ID:             tenant.ID,
+		Host:           tenant.Host,
+		Status:         tenant.Status,
+		Plan:           tenant.Plan,
+		DBName:         tenant.DBName,
+		DBInstanceID:   tenant.DBInstanceID,
+		DBInstanceCode: tenant.DBInstanceCode,
+	})
 
 	return ctx, nil
 }
@@ -81,7 +85,11 @@ func (s *ServiceTenantProvider) validatePublicTenant(ctx context.Context, routeI
 	var err error
 	switch routeID {
 	case "survey_get":
-		tenant, err = s.GetByHost(ctx, utils.GetRouteDomain(ctx))
+		routeInfo, ok := requestctx.Route(ctx)
+		if !ok || routeInfo.Domain == "" {
+			return nil, ErrOriginMissing
+		}
+		tenant, err = s.GetByHost(ctx, routeInfo.Domain)
 		if err != nil {
 			return nil, err
 		}
