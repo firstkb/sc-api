@@ -12,7 +12,7 @@
   - таблица `tenant` c полями:
     - `id BIGINT`;
     - `name text`;
-    - `subdomain text UNIQUE`;
+    - `domain text UNIQUE`;
     - `is_sandbox boolean NOT NULL DEFAULT false`;
     - `isolation isolation_mode NOT NULL DEFAULT 'sandbox'`;
     - `plan text NOT NULL DEFAULT 'sandbox'`;
@@ -267,7 +267,7 @@
 ### Этап 3 — схемы для `sandbox`/`dedicated_schema` (опционально, последующим этапом)
 
 - Спроектировать, как именно будет выглядеть `schema-per-tenant`:
-  - соглашение об именовании схем (`tenant_<id>` или по `subdomain`);
+  - соглашение об именовании схем (`tenant_<id>` или по `domain`);
   - миграции по схемам: либо один набор SQL с параметризованным именем схемы, либо отдельные миграции на схему;
   - переключение `search_path` в `Database` в зависимости от `tenantId`.
 - Постепенно уводить запросы от `{db}`:

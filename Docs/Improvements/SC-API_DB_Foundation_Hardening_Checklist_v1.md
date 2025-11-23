@@ -56,7 +56,7 @@ CREATE INDEX IF NOT EXISTS tenant_updated_at_id_idx
 -- базовая структура (для справки)
 -- id BIGINT GENERATED ALWAYS AS IDENTITY (START WITH 100 INCREMENT BY 1),
 -- name text NOT NULL,
--- subdomain text UNIQUE,
+-- domain text UNIQUE,
 -- is_sandbox boolean NOT NULL DEFAULT false,
 -- isolation text NOT NULL DEFAULT 'shared' CHECK (isolation IN ('shared','dedicated_db')),
 -- plan text NOT NULL DEFAULT 'light' CHECK (plan IN ('light','pro','enterprise')),

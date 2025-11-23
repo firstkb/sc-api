@@ -8,6 +8,7 @@ import (
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/pingsvc"
 	appmw "github.com/firstkb/sc-api/cmd/scapi/internal/server/middleware"
+	"github.com/firstkb/sc-api/cmd/scapi/internal/tenantsvc"
 	"github.com/firstkb/sc-api/internal/config"
 	"github.com/firstkb/sc-api/internal/httpx/mw"
 )
@@ -37,6 +38,12 @@ func Bootstrap(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	}
 	server.pingsvc = ps
 
+	tenant, err := tenantsvc.NewService(server.sqlClient, cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	server.tenants = tenant
+
 	mux, class := server.buildRoutes()
 	server.classifier = class
 	server.handler = server.buildHTTPHandler(mux)
@@ -49,6 +56,7 @@ func (srv *Server) buildHTTPHandler(mux http.Handler) http.Handler {
 	handler = appmw.RequestID()(handler)
 	handler = appmw.Timeout(time.Duration(srv.config.Timeout) * time.Second)(handler)
 	handler = appmw.AccessLog(srv.logger, srv.config.MW.AccessLog)(handler)
+	handler = appmw.TenantGuard(srv.logger, srv.tenants)(handler)
 	handler = appmw.Claims(srv.logger, srv.config.Token.Provider)(handler)
 
 	if srv.config.Origin != "" {

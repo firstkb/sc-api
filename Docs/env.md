@@ -97,6 +97,13 @@ host=<DbHost> port=<DbPort> dbname=<DbName> user=<DbUser> password=<DbPass> sslm
     - Обязательность: да.
     - Пример: `SCAPI_DB_DBNAME=scapi_master`.
 
+  - **`SCAPI_DB_DEBUG`**
+    - Назначение: включает подробный debug-лог SQL-запросов.
+    - Тип: bool (`true`/`false`).
+    - Обязательность: нет.
+    - Значение по умолчанию: `false`.
+    - Пример: `SCAPI_DB_DEBUG=true`.
+
 - **2.3.1. Настройки пула подключений к БД**
 
   Эти параметры позволяют управлять размером и временем жизни пулов подключений `sql.DB` как для master‑БД, так и для tenant‑БД. Все они опциональны; при отсутствии используются значения по умолчанию.
@@ -130,6 +137,14 @@ host=<DbHost> port=<DbPort> dbname=<DbName> user=<DbUser> password=<DbPass> sslm
     - Рекомендованное значение для продакшена: `10m`.
     - Пример: `SCAPI_DB_POOL_MAXIDLETIME=10m`.
 
+- **2.3.2. Кэш master-данных тенантов**
+
+  - **`SCAPI_TENANTS_CACHE_TTL`**
+    - Назначение: TTL ин-мемори кэша метаданных (таблицы `tenant`, `tenant_db`, `tenant_domain`).
+    - Тип: строка-длительность (`time.Duration`).
+    - Обязательность: нет, по умолчанию `1m`.
+    - Пример: `SCAPI_TENANTS_CACHE_TTL=15m`.
+
 - **2.4. Тестовые переменные**
   - **`SCAPI_TEST_PG_CONN`**
     - Назначение: строка подключения к тестовой базе PostgreSQL для интеграционных тестов `internal/sqlserver`.
@@ -159,6 +174,11 @@ SCAPI_DB_DBNAME=scapi_master
 # SCAPI_DB_POOL_MAXLIFETIME=30m
 # SCAPI_DB_POOL_MAXIDLETIME=10m
 
+# Enable verbose SQL logging
+# SCAPI_DB_DEBUG=true
+
+# Tenant metadata cache
+# SCAPI_TENANTS_CACHE_TTL=15m
 
 # SCAPI_TOKEN_PROVIDER=cognito
 

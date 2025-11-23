@@ -28,6 +28,9 @@ maxidle = 1
 maxopen = 1
 maxlifetime = "1m"
 maxidletime = "1m"
+
+[tenants]
+cachettl = "30s"
 `
 
 func mustTestConfig(t *testing.T) *config.Config {

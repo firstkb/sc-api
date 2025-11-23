@@ -32,6 +32,8 @@ type Client struct {
 	pools     map[string]*sql.DB
 	poolCfg   poolConfig
 	baseParms dsnParams
+
+	debug bool
 }
 
 var dbnamesUpdateInterval time.Duration = 5 * time.Minute
@@ -54,6 +56,12 @@ func WithPoolConfig(maxIdle, maxOpen int, maxLifetime time.Duration, maxIdleTime
 		if maxIdleTime > 0 {
 			c.poolCfg.MaxIdleTime = maxIdleTime
 		}
+	}
+}
+
+func WithDebug(debug bool) Option {
+	return func(c *Client) {
+		c.debug = debug
 	}
 }
 
@@ -190,14 +198,14 @@ func (c *Client) loadDbNames() bool {
 	// Subsequent loads: incremental by updated_at to avoid re-reading entire table.
 	if c.updated.IsZero() {
 		query := `
-	SELECT CAST(id AS text) AS tenant_id, db_name, updated_at
-	FROM tenant
+	SELECT CAST(tenant_id AS text) AS tenant_id, db_name, updated_at
+	FROM tenant_db
 	`
 		rows, err = c.masterDB.Query(query)
 	} else {
 		query := `
-	SELECT CAST(id AS text) AS tenant_id, db_name, updated_at
-	FROM tenant
+	SELECT CAST(tenant_id AS text) AS tenant_id, db_name, updated_at
+	FROM tenant_db
 	WHERE updated_at > $1
 	`
 		rows, err = c.masterDB.Query(query, c.updated)

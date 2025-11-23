@@ -20,7 +20,7 @@ func NewRepo(client *postgres.Client, logger *slog.Logger) *Repo {
 }
 
 func (r *Repo) getPing(ctx context.Context) (string, error) {
-	_, err := r.OpenDBFromClaim(ctx)
+	_, err := r.OpenDBFromTenant(ctx)
 	if err != nil {
 		return "", err
 	}

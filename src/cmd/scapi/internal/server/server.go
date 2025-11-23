@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/firstkb/sc-api/cmd/scapi/internal/tenantsvc"
 	"github.com/firstkb/sc-api/internal/httpx/router"
 	"github.com/firstkb/sc-api/internal/postgres"
 
@@ -40,6 +41,7 @@ type DatabaseConfig struct {
 	Password   string     `json:"password"`
 	MasterName string     `json:"mastername"`
 	SSLMode    string     `json:"sslmode"`
+	Debug      bool       `json:"debug"`
 	PoolConfig PoolConfig `json:"pool"`
 }
 
@@ -58,6 +60,7 @@ type Server struct {
 	sqlClient  *postgres.Client
 	pingsvc    *pingsvc.PingService
 	classifier *router.Classifier
+	tenants    *tenantsvc.ServiceTenantProvider
 }
 
 func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
@@ -141,6 +144,7 @@ func (srv *Server) initialize() error {
 
 	opts := []postgres.Option{
 		postgres.WithPoolConfig(poolMaxIdle, poolMaxOpen, poolLife, poolIdleTime),
+		postgres.WithDebug(srv.config.DB.Debug),
 	}
 	client, err := postgres.NewClient(conn, srv.logger, opts...)
 	if err != nil {

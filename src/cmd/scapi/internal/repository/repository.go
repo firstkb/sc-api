@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/firstkb/sc-api/cmd/scapi/internal/utils"
@@ -24,7 +25,7 @@ func NewRepository(client *postgres.Client, logger *slog.Logger) Repository {
 }
 
 // OpenDBFromClaim open database from claim in context.
-func (r *Repository) OpenDBFromClaim(ctx context.Context) (*postgres.Database, error) {
+/*func (r *Repository) OpenDBFromClaim(ctx context.Context) (*postgres.Database, error) {
 	claim, err := utils.GetClaim(ctx)
 	if err != nil {
 		return nil, err
@@ -36,6 +37,20 @@ func (r *Repository) OpenDBFromClaim(ctx context.Context) (*postgres.Database, e
 	}
 
 	r.Claim = claim
+
+	return db, nil
+}*/
+
+func (r *Repository) OpenDBFromTenant(ctx context.Context) (*postgres.Database, error) {
+	tenantID := utils.GetTenantID(ctx)
+	if tenantID == "" {
+		return nil, errors.New("tenant ID is required")
+	}
+
+	db, err := r.Client.OpenDB(ctx, tenantID)
+	if err != nil {
+		return nil, errors.New("failed to open database")
+	}
 
 	return db, nil
 }

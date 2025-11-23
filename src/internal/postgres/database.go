@@ -35,7 +35,7 @@ func (d *Database) Exec(query string, args ...any) (sql.Result, error) {
 		return result, err
 	})
 
-	if err != nil || executionTime > longRunningQueryThreshold {
+	if d.shouldTrace(err, executionTime) {
 		d.traceQuery(err, executionTime, query, args...)
 	}
 
@@ -54,7 +54,7 @@ func (d *Database) Query(query string, args ...any) (*sql.Rows, error) {
 		return rows, err
 	})
 
-	if err != nil || executionTime > longRunningQueryThreshold {
+	if d.shouldTrace(err, executionTime) {
 		d.traceQuery(err, executionTime, query, args...)
 	}
 
@@ -73,8 +73,12 @@ func (d *Database) QueryRow(query string, args ...any) *sql.Row {
 		return row, nil
 	})
 
-	if (row != nil && row.Err() != nil) || executionTime > longRunningQueryThreshold {
-		d.traceQuery(row.Err(), executionTime, query, args...)
+	var rowErr error
+	if row != nil {
+		rowErr = row.Err()
+	}
+	if d.shouldTrace(rowErr, executionTime) {
+		d.traceQuery(rowErr, executionTime, query, args...)
 	}
 
 	return row
@@ -128,14 +132,33 @@ func (d *Database) setDbName(query string) string {
 	return strings.ReplaceAll(query, dbname, d.Name)
 }
 
+func (d *Database) shouldTrace(err error, executionTime time.Duration) bool {
+	if err != nil || executionTime > longRunningQueryThreshold {
+		return true
+	}
+	if d.client != nil && d.client.debug {
+		return true
+	}
+	return false
+}
+
 func (d *Database) traceQuery(err error, executionTime time.Duration, query string, args ...any) {
-	if err != nil {
-		d.client.logger.Debug(err.Error(), "executionTime", executionTime.Milliseconds(), "query", query, "params", args)
-	} else if executionTime > longRunningQueryThreshold {
-		d.client.logger.Warn(fmt.Sprintf("query completed successfully, but it took longer than the given threshold of %vms", longRunningQueryThreshold.Milliseconds()),
-			"executionTime", executionTime.Milliseconds(), "query", query, "params", args)
-	} else {
-		d.client.logger.Debug("", "executionTime", executionTime.Milliseconds(), "query", query, "params", args)
+	executionMs := executionTime.Milliseconds()
+	dbName := d.Name
+	switch {
+	case err != nil:
+		d.client.logger.Debug("sql error", "db", dbName, "execution_ms", executionMs, "query", query, "params", args, "error", err)
+	case executionTime > longRunningQueryThreshold:
+		d.client.logger.Warn(
+			"sql slow query",
+			"db", dbName,
+			"threshold_ms", longRunningQueryThreshold.Milliseconds(),
+			"execution_ms", executionMs,
+			"query", query,
+			"params", args,
+		)
+	default:
+		d.client.logger.Debug("sql query", "db", dbName, "execution_ms", executionMs, "query", query, "params", args)
 	}
 }
 

@@ -105,7 +105,7 @@ func (r *Runner) ApplyAll(ctx context.Context) error {
 func (r *Runner) listAppDatabases(ctx context.Context) ([]string, error) {
 	const q = `
 SELECT DISTINCT db_name
-  FROM tenant
+  FROM tenant_db
  WHERE db_name IS NOT NULL
  ORDER BY db_name`
 
