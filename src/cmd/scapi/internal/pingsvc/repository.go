@@ -20,7 +20,7 @@ func NewRepo(client *postgres.Client, logger *slog.Logger) *Repo {
 }
 
 func (r *Repo) getPing(ctx context.Context) (string, error) {
-	_, err := r.OpenDBFromTenant(ctx)
+	_, err := r.OpenDB(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -28,7 +28,7 @@ func (r *Repo) getPing(ctx context.Context) (string, error) {
 }
 
 func (r *Repo) getUsers(ctx context.Context, tenantID string) ([]map[string]any, error) {
-	db, err := r.OpenDBFromTenant(ctx)
+	db, err := r.OpenDB(ctx)
 	if err != nil {
 		return nil, err
 	}

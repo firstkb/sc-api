@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -24,7 +23,7 @@ type Database struct {
 }
 
 func (d *Database) Exec(query string, args ...any) (sql.Result, error) {
-	query = d.setDbName(query)
+	//query = d.setDbName(query)
 
 	var executionTime time.Duration
 
@@ -43,7 +42,7 @@ func (d *Database) Exec(query string, args ...any) (sql.Result, error) {
 }
 
 func (d *Database) Query(query string, args ...any) (*sql.Rows, error) {
-	query = d.setDbName(query)
+	//query = d.setDbName(query)
 
 	var executionTime time.Duration
 
@@ -62,7 +61,7 @@ func (d *Database) Query(query string, args ...any) (*sql.Rows, error) {
 }
 
 func (d *Database) QueryRow(query string, args ...any) *sql.Row {
-	query = d.setDbName(query)
+	//query = d.setDbName(query)
 
 	var executionTime time.Duration
 
@@ -124,13 +123,13 @@ func (d *Database) Select(query string, params ...any) ([]map[string]any, error)
 	return results, nil
 }
 
-func (d *Database) setDbName(query string) string {
+/*func (d *Database) setDbName(query string) string {
 	if d.Name == "" || !strings.Contains(query, dbname) {
 		return query
 	}
 
 	return strings.ReplaceAll(query, dbname, d.Name)
-}
+}*/
 
 func (d *Database) shouldTrace(err error, executionTime time.Duration) bool {
 	if err != nil || executionTime > longRunningQueryThreshold {

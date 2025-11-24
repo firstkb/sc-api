@@ -5,14 +5,26 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/firstkb/sc-api/internal/migrate"
-
 	_ "github.com/lib/pq"
 )
+
+type poolKey struct {
+	instance string // instance code, e.g. "S1"
+	name     string // db_name
+}
+
+type instanceCfg struct {
+	params    dsnParams // host, port, user, password, sslmode (without dbname)
+	updatedAt time.Time
+}
+
+type InstanceResolver func(code, secretName string) (string, error) // returns full DSN
 
 type poolConfig struct {
 	MaxIdle     int
@@ -25,13 +37,14 @@ type Client struct {
 	masterDB *sql.DB
 	logger   *slog.Logger
 
-	dbnames map[string]string
-	updated time.Time
-
 	poolsMu   sync.RWMutex
-	pools     map[string]*sql.DB
+	pools     map[poolKey]*sql.DB
 	poolCfg   poolConfig
 	baseParms dsnParams
+
+	instancesMu    sync.RWMutex
+	instances      map[string]instanceCfg
+	instanceResolv InstanceResolver
 
 	debug bool
 }
@@ -74,7 +87,8 @@ func NewClient(connStr string, logger *slog.Logger, opts ...Option) (*Client, er
 			MaxLifetime: 30 * time.Minute,
 			MaxIdleTime: 0,
 		},
-		pools: make(map[string]*sql.DB),
+		pools:     make(map[poolKey]*sql.DB),
+		instances: make(map[string]instanceCfg),
 	}
 
 	for _, opt := range opts {
@@ -96,7 +110,11 @@ func NewClient(connStr string, logger *slog.Logger, opts ...Option) (*Client, er
 	}
 
 	// Cache base connection parameters to build DSN for tenant databases.
-	client.baseParms = parseDSN(connStr)
+	bp, err := ParseDSN(client.logger, connStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse base DSN: %w", err)
+	}
+	client.baseParms = bp
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -105,6 +123,9 @@ func NewClient(connStr string, logger *slog.Logger, opts ...Option) (*Client, er
 		client.logger.Error(fmt.Sprintf("database connection failed: %v", err))
 	} else {
 		//client.loadDbNames()
+		if err := client.LoadInstancesFromMaster(ctx); err != nil {
+			client.logger.Warn("LoadInstancesFromMaster failed", "error", err)
+		}
 	}
 
 	return client, nil
@@ -122,36 +143,19 @@ func (c *Client) Close() error {
 
 	// Close all tenant pools.
 	c.poolsMu.Lock()
-	for name, db := range c.pools {
-		if db != nil {
-			if err := db.Close(); err != nil {
-				c.logger.Warn("failed to close tenant DB", "db", name, "error", err)
-			}
+	for k, db := range c.pools {
+		if db != nil && db.Close() != nil {
+			c.logger.Warn("failed to close tenant DB", "instance", k.instance, "db", k.name)
 		}
 	}
-	c.pools = make(map[string]*sql.DB)
+	c.pools = make(map[poolKey]*sql.DB)
 	c.poolsMu.Unlock()
 
 	return nil
 }
 
-func (c *Client) OpenDB(ctx context.Context, tenantId string) (*Database, error) {
-	name := c.getDbName(tenantId)
-	if name == "" {
-		return nil, fmt.Errorf("invalid tenant id: '%s'", tenantId)
-	}
-
-	db, err := c.getOrOpenDB(name, "")
-	if err != nil {
-		return nil, err
-	}
-
-	return &Database{
-		client: c,
-		ctx:    ctx,
-		db:     db,
-		Name:   name,
-	}, nil
+func WithInstanceResolver(r InstanceResolver) Option {
+	return func(c *Client) { c.instanceResolv = r }
 }
 
 func (c *Client) OpenDBTenant(ctx context.Context, dbName string, dbInstanceCode string) (*Database, error) {
@@ -176,198 +180,67 @@ func (c *Client) OpenDBMaster(ctx context.Context) (*Database, error) {
 	}, nil
 }
 
-func (c *Client) getDbName(tenantId string) string {
-	var name string
-
-	if c.dbnames != nil {
-		name = c.dbnames[tenantId]
+func (c *Client) instanceParams(code string) (dsnParams, bool) {
+	if strings.TrimSpace(code) == "" {
+		return c.baseParms, true
 	}
-
-	if name == "" {
-		if c.loadDbNames() {
-			name = c.dbnames[tenantId]
+	c.instancesMu.RLock()
+	inst, ok := c.instances[code]
+	c.instancesMu.RUnlock()
+	if !ok {
+		// collect known instances for logging
+		c.instancesMu.RLock()
+		known := make([]string, 0, len(c.instances))
+		for k := range c.instances {
+			known = append(known, k)
 		}
+		c.instancesMu.RUnlock()
+		c.logger.Warn("unknown db instance code, fallback to base env",
+			"code", code, "known", known)
+		return c.baseParms, false
 	}
-
-	return name
-}
-
-func (c *Client) GetDbNames() map[string]string {
-	return c.dbnames
-}
-
-func (c *Client) loadDbNames() bool {
-	// Throttle refreshes to avoid excessive load on master DB.
-	if !c.updated.IsZero() && time.Since(c.updated) < dbnamesUpdateInterval {
-		return false
-	}
-
-	var (
-		rows *sql.Rows
-		err  error
-	)
-
-	// First load: full snapshot of all tenants.
-	// Subsequent loads: incremental by updated_at to avoid re-reading entire table.
-	if c.updated.IsZero() {
-		query := `
-	SELECT CAST(tenant_id AS text) AS tenant_id, db_name, updated_at
-	FROM tenant_db
-	`
-		rows, err = c.masterDB.Query(query)
-	} else {
-		query := `
-	SELECT CAST(tenant_id AS text) AS tenant_id, db_name, updated_at
-	FROM tenant_db
-	WHERE updated_at > $1
-	`
-		rows, err = c.masterDB.Query(query, c.updated)
-	}
-
-	if err != nil {
-		c.logger.Error(fmt.Sprintf("sqlclient get dbnames: %v", err))
-		return false
-	}
-	defer rows.Close()
-
-	// Initialize map on first use; subsequent loads merge updates.
-	if c.dbnames == nil {
-		c.dbnames = make(map[string]string)
-	}
-
-	maxUpdated := c.updated
-	updatedAny := false
-
-	for rows.Next() {
-		var (
-			tenantID  string
-			dbName    string
-			updatedAt time.Time
-		)
-		if err := rows.Scan(&tenantID, &dbName, &updatedAt); err != nil {
-			c.logger.Error(fmt.Sprintf("sqlclient scan dbnames: %v", err))
-			return false
-		}
-		c.dbnames[tenantID] = dbName
-		if updatedAt.After(maxUpdated) {
-			maxUpdated = updatedAt
-		}
-		updatedAny = true
-	}
-
-	if err = rows.Err(); err != nil {
-		c.logger.Error(fmt.Sprintf("sqlclient rows dbnames: %v", err))
-		return false
-	}
-
-	// If this is the very first load and we didn't get any tenants,
-	// keep behaviour compatible with previous version (no cache, so next call will retry).
-	if c.updated.IsZero() && len(c.dbnames) == 0 {
-		return false
-	}
-
-	// Only advance the cursor if we actually saw newer rows.
-	if updatedAny {
-		c.updated = maxUpdated
-	} else if c.updated.IsZero() {
-		// No rows at all, but we attempted initial load — prevent hammering master DB.
-		c.updated = time.Now()
-	}
-
-	c.logger.Debug("sqlclient dbnames map updated", "size", len(c.dbnames), "updatedAt", c.updated)
-
-	return true
-}
-
-// GetPhysicalDbNames returns a de-duplicated list of physical database names
-// for all known tenants. It uses the internal cache and may trigger a refresh
-// if the cache is stale.
-func (c *Client) GetPhysicalDbNames() []string {
-	// Best-effort refresh; ignore result, as cache may already be warm.
-	_ = c.loadDbNames()
-
-	result := make([]string, 0)
-	if c.dbnames == nil {
-		return result
-	}
-
-	seen := make(map[string]struct{})
-	for _, name := range c.dbnames {
-		if name == "" {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		result = append(result, name)
-	}
-
-	return result
-}
-
-// ApplyMigrations runs SQL migrations for all known application databases.
-// It reuses the master connection and base connection settings from the client,
-// while delegating migration logic to the shared migrate.Runner.
-func (c *Client) ApplyMigrations(ctx context.Context, logger *slog.Logger) error {
-	if c.masterDB == nil {
-		return fmt.Errorf("sqlserver: master DB is not initialized")
-	}
-	if logger == nil {
-		logger = c.logger
-	}
-
-	dbCfg := migrate.DBConfig{
-		Host:     c.baseParms.Host,
-		Port:     c.baseParms.Port,
-		Username: c.baseParms.User,
-		Password: c.baseParms.Password,
-		SSLMode: func() string {
-			if strings.TrimSpace(c.baseParms.SSLMode) == "" {
-				return "disable"
-			}
-			return c.baseParms.SSLMode
-		}(),
-	}
-
-	return migrate.ApplyAllWithAutoDiscovery(ctx, c.masterDB, dbCfg, logger)
+	return inst.params, true
 }
 
 // getOrOpenDB returns an existing *sql.DB for the given database name or
 // lazily creates a new one using the same connection parameters as master DB
 // but with overridden dbname.
-func (c *Client) getOrOpenDB(dbName string, _ string) (*sql.DB, error) {
+func (c *Client) getOrOpenDB(dbName string, instanceCode string) (*sql.DB, error) {
 	name := strings.TrimSpace(dbName)
+	inst := strings.TrimSpace(instanceCode)
 	if name == "" {
 		return nil, fmt.Errorf("tenant db name is required")
 	}
 
-	// Fast path: try read lock first.
+	key := poolKey{instance: inst, name: name}
+
+	// fast path
 	c.poolsMu.RLock()
-	if db, ok := c.pools[name]; ok && db != nil {
+	if db, ok := c.pools[key]; ok && db != nil {
 		c.poolsMu.RUnlock()
 		return db, nil
 	}
 	c.poolsMu.RUnlock()
 
-	// Slow path: create under write lock.
+	// slow path
 	c.poolsMu.Lock()
 	defer c.poolsMu.Unlock()
-
-	// Re-check after acquiring write lock to avoid duplicate creation.
-	if db, ok := c.pools[name]; ok && db != nil {
+	if db, ok := c.pools[key]; ok && db != nil {
 		return db, nil
 	}
 
-	if c.baseParms.Host == "" {
-		return nil, fmt.Errorf("cannot open tenant db '%s': base connection parameters are not initialized", name)
+	params, ok := c.instanceParams(inst)
+	if !ok {
+		c.logger.Warn("unknown db instance code, fallback to base env", "code", inst)
+	}
+	if params.Host == "" {
+		return nil, fmt.Errorf("cannot open db %q: base/instance connection params are empty", name)
 	}
 
-	dsn := c.baseParms.WithDBName(name).String()
-
+	dsn := params.WithDBName(name).String()
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open tenant db '%s': %w", name, err)
+		return nil, fmt.Errorf("open %s/%s: %w", inst, name, err)
 	}
 
 	db.SetMaxIdleConns(c.poolCfg.MaxIdle)
@@ -376,17 +249,16 @@ func (c *Client) getOrOpenDB(dbName string, _ string) (*sql.DB, error) {
 	if c.poolCfg.MaxIdleTime > 0 {
 		db.SetConnMaxIdleTime(c.poolCfg.MaxIdleTime)
 	}
-	// TODO db.Exec("SET search_path = public, tenant_" + name)
 
-	// Verify connectivity with a short ping.
+	// ping
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("ping tenant db '%s': %w", name, err)
+		return nil, fmt.Errorf("ping %s/%s: %w", inst, name, err)
 	}
 
-	c.pools[name] = db
+	c.pools[key] = db
 	return db, nil
 }
 
@@ -402,9 +274,25 @@ type dsnParams struct {
 
 // parseDSN parses a simple space-separated key=value DSN string into dsnParams.
 // It is intentionally conservative and only extracts known keys, ignoring others.
-func parseDSN(s string) dsnParams {
-	var p dsnParams
+// replace parseDSN with parseKVDSN, add ParseDSN, and reuse parseURIDSN
 
+// ParseDSN detects URI vs key=value and returns dsnParams
+func ParseDSN(logger *slog.Logger, s string) (dsnParams, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return dsnParams{}, nil
+	}
+	if strings.HasPrefix(s, "postgres://") || strings.HasPrefix(s, "postgresql://") {
+		result, err := parseURIDSN(s)
+		return result, err
+	}
+	result := parseKVDSN(s)
+	return result, nil
+}
+
+// key=value
+func parseKVDSN(s string) dsnParams {
+	var p dsnParams
 	fields := strings.Fields(s)
 	for _, f := range fields {
 		parts := strings.SplitN(f, "=", 2)
@@ -413,7 +301,6 @@ func parseDSN(s string) dsnParams {
 		}
 		key := strings.ToLower(strings.TrimSpace(parts[0]))
 		val := strings.TrimSpace(parts[1])
-
 		switch key {
 		case "host":
 			p.Host = val
@@ -429,8 +316,40 @@ func parseDSN(s string) dsnParams {
 			p.SSLMode = val
 		}
 	}
-
 	return p
+}
+
+func parseURIDSN(s string) (dsnParams, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return dsnParams{}, err
+	}
+
+	var p dsnParams
+	if u.User != nil {
+		p.User = u.User.Username()
+		if pw, ok := u.User.Password(); ok {
+			p.Password = pw
+		}
+	}
+	// host:port
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		// может быть без порта
+		host = u.Host
+	}
+	p.Host = host
+	p.Port = port
+
+	if db := strings.TrimPrefix(u.Path, "/"); db != "" {
+		p.DBName = db
+	}
+	q := u.Query()
+	if sm := q.Get("sslmode"); sm != "" {
+		p.SSLMode = sm
+	}
+
+	return p, nil
 }
 
 // WithDBName returns a copy of dsnParams with DBName overridden.

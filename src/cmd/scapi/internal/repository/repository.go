@@ -25,7 +25,7 @@ func NewRepository(client *postgres.Client, logger *slog.Logger) Repository {
 	}
 }
 
-func (r *Repository) OpenDBFromTenant(ctx context.Context) (*postgres.Database, error) {
+func (r *Repository) OpenDB(ctx context.Context) (*postgres.Database, error) {
 	tenantInfo, ok := requestctx.Tenant(ctx)
 	if !ok {
 		return nil, errors.New("tenant not found")
@@ -33,17 +33,8 @@ func (r *Repository) OpenDBFromTenant(ctx context.Context) (*postgres.Database, 
 
 	db, err := r.Client.OpenDBTenant(ctx, tenantInfo.DBName, tenantInfo.DBInstanceCode)
 	if err != nil {
-		return nil, errors.New("failed to open database")
-	}
-
-	return db, nil
-}
-
-// OpenDBByTenantID open database by explicitly passed tenantID, without using claim.
-func (r *Repository) OpenDBByTenantID(ctx context.Context, tenantID string) (*postgres.Database, error) {
-	db, err := r.Client.OpenDB(ctx, tenantID)
-	if err != nil {
 		return nil, err
 	}
+
 	return db, nil
 }
