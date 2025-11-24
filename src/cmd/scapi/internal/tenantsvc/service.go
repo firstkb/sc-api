@@ -11,6 +11,7 @@ import (
 	"github.com/firstkb/sc-api/internal/config"
 	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 	"github.com/firstkb/sc-api/internal/postgres"
+	"github.com/firstkb/sc-api/internal/tokencoder"
 )
 
 type Config struct {
@@ -19,6 +20,7 @@ type Config struct {
 
 type TenantsConfig struct {
 	CacheTTL string `json:"cachettl"`
+	Key      string `json:"key"`
 }
 
 type cacheEntry struct {
@@ -29,11 +31,13 @@ type cacheEntry struct {
 type ServiceTenantProvider struct {
 	repository *Repository
 	logger     *slog.Logger
+	config     *Config
 
 	cacheTTL    time.Duration
 	cacheMu     sync.RWMutex
 	cacheByID   map[string]cacheEntry
 	cacheByHost map[string]cacheEntry
+	tokenCodec  *tokencoder.Codec
 }
 
 const defaultTenantsCacheTTL = time.Minute
@@ -51,12 +55,24 @@ func NewService(sqlClient *postgres.Client, cfg *config.Config, logger *slog.Log
 		}
 	}
 
+	key, err := tokencoder.ParseKey(c.Tenants.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	codec, err := tokencoder.New(key)
+	if err != nil {
+		return nil, err
+	}
+
 	return &ServiceTenantProvider{
 		repository:  NewRepository(sqlClient, logger),
 		logger:      logger,
 		cacheTTL:    ttl,
 		cacheByID:   make(map[string]cacheEntry),
 		cacheByHost: make(map[string]cacheEntry),
+		config:      &c,
+		tokenCodec:  codec,
 	}, nil
 }
 

@@ -16,6 +16,7 @@ func Classifier(c *router.Classifier) func(http.Handler) http.Handler {
 					Tier:    match.Tier,
 					ID:      match.RouteID,
 					Pattern: match.Pattern,
+					URI:     match.URI,
 					Domain:  router.ExtractDomain(r),
 				})
 				next.ServeHTTP(w, r.WithContext(ctx))

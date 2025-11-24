@@ -41,6 +41,13 @@ func (srv *Server) buildRoutes() (*http.ServeMux, *router.Classifier) {
 			return info, nil
 		}, srv.logger))
 
+	b.Handle("SURVEY_GET", "GET", "/survey/{code}", router.TierPublicTenant,
+		handler.HandleJson(func(ctx context.Context, r *http.Request, in any) (string, error) {
+			code := r.PathValue("code")
+			srv.logger.Info("SURVEY_GET: code", "code", code)
+			return code, nil
+		}, srv.logger))
+
 	return b.Mux(), b.Classifier()
 }
 

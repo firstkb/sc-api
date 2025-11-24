@@ -8,6 +8,7 @@ import (
 	"github.com/firstkb/sc-api/cmd/scapi/internal/utils"
 	"github.com/firstkb/sc-api/internal/httpx/requestctx"
 	"github.com/firstkb/sc-api/internal/httpx/router"
+	"github.com/firstkb/sc-api/internal/tokencoder"
 )
 
 var (
@@ -17,6 +18,7 @@ var (
 	ErrTenantNotActive               = errors.New("tenant is not active")
 	ErrInvalidTier                   = errors.New("invalid tier")
 	ErrInvalidRouteIDForPublicTenant = errors.New("invalid route ID for public tenant validation")
+	ErrTokenCodecNotConfigured       = errors.New("token codec not configured")
 )
 
 func (s *ServiceTenantProvider) Validate(ctx context.Context, tier router.Tier, routeID router.RouteID, domain string, r *http.Request) (context.Context, error) {
@@ -80,13 +82,16 @@ func (s *ServiceTenantProvider) validateSecure(ctx context.Context, routeID rout
 }
 
 func (s *ServiceTenantProvider) validatePublicTenant(ctx context.Context, routeID router.RouteID, r *http.Request) (*Tenant, error) {
-	// TODO: set switch on routerID and routeID to get tenant by host or other way
+	routeInfo, ok := requestctx.Route(ctx)
+	if !ok {
+		return nil, ErrOriginMissing
+	}
+
 	var tenant *Tenant
 	var err error
 	switch routeID {
-	case "survey_get":
-		routeInfo, ok := requestctx.Route(ctx)
-		if !ok || routeInfo.Domain == "" {
+	case router.RouteID("LOGIN_TEST_GET"):
+		if routeInfo.Domain == "" {
 			return nil, ErrOriginMissing
 		}
 		tenant, err = s.GetByHost(ctx, routeInfo.Domain)
@@ -94,7 +99,45 @@ func (s *ServiceTenantProvider) validatePublicTenant(ctx context.Context, routeI
 			return nil, err
 		}
 	default:
-		return nil, ErrInvalidRouteIDForPublicTenant
+		params, paramsOK := router.ExtractPathParams(routeInfo.URI, r.URL.Path)
+		code := ""
+		if paramsOK {
+			code = params["code"]
+		}
+		if code == "" {
+			return nil, ErrInvalidRouteIDForPublicTenant
+		}
+
+		payload, err := s.decodeSurveyToken(code)
+		if err != nil {
+			return nil, err
+		}
+
+		tenant, err = s.GetByID(ctx, payload.TenantID)
+		if err != nil {
+			return nil, err
+		}
+		if s.logger != nil {
+			s.logger.Info("Validate: survey code accepted", "tenantID", payload.TenantID, "surveyID", payload.SurveyID, "issuedAt", payload.IssuedAt)
+		}
 	}
+
 	return tenant, nil
+}
+
+func (s *ServiceTenantProvider) decodeSurveyToken(code string) (SurveyTokenPayload, error) {
+	var zero SurveyTokenPayload
+	if s.tokenCodec == nil {
+		return zero, ErrTokenCodecNotConfigured
+	}
+
+	payload, err := tokencoder.Decode(s.tokenCodec, SurveyTokenSchema{}, code)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("Validate: invalid survey code", "error", err)
+		}
+		return zero, ErrInvalidRouteIDForPublicTenant
+	}
+
+	return payload, nil
 }

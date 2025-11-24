@@ -24,6 +24,7 @@ type RouteInfo struct {
 	Tier    router.Tier
 	ID      router.RouteID
 	Pattern string
+	URI     string
 	Domain  string // normalized host for routing/metrics
 }
 
