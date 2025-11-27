@@ -78,24 +78,16 @@
 
 Фактически текущая модель повторяет подход MSSQL: у нас один пул, а имя БД подставляется в текст запроса через плейсхолдер `{db}`, хотя в PostgreSQL нормальная практика — использовать отдельный DSN/пул на каждую физическую БД.
 
-### 1.4. Миграции `internal/migrate/runner.go`
+### 1.4. Миграции `internal/postgres/migrator.go`
 
-- Миграционный раннер (`internal/migrate/runner.go`):
-  - имеет доступ к `MasterDB *sql.DB`;
-  - сам делает запрос:
+- Встроенный `postgres.Migrator` повторно использует `Client`:
+  - опирается на `client.masterDB` и кеш инстансов (`LoadInstancesFromMaster`);
+  - получает список целевых БД через `tenant_db` + `db_instance`, сохраняя пару `db_name` + `instance_code`;
+  - открывает подключение через `client.getOrOpenDB`, тем самым применяя те же параметры пула, что и runtime.
+- Каждый SQL‑файл выполняется внутри транзакции и фиксируется в `schema_migrations`.
+- Таблица `migration_runs` в master‑БД используется для блокировки повторных прогонов: первая нода записывает `status='running'` с версией из `MIGRATION_VERSION` (env‑переменная, например `1.2.3.commit-sha`), а последующие рестарты видят `completed` и пропускают миграции для того же билда.
 
-    ```sql
-    SELECT DISTINCT db_name
-      FROM tenant
-     WHERE db_name IS NOT NULL
-     ORDER BY db_name
-    ```
-
-  - для каждой БД строит DSN вида  
-    `host=<Host> port=<Port> dbname=<db_name> user=<User> password=<Pass> sslmode=<SSLMode>`  
-    и открывает отдельное подключение `*sql.DB` для выполнения миграций.
-
-Таким образом, в миграциях уже используется модель «одна физическая БД → отдельный DSN/пул», тогда как в runtime‑клиенте (`sqlserver.Client`/`Database`) пока используется подстановка `{db}`.
+Миграции и runtime теперь используют одну и ту же модель «одна физическая БД → отдельный пул», что упрощает сопровождение и снимает дублирующую логику.
 
 ---
 

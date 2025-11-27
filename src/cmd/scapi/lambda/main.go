@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -120,6 +121,7 @@ func newServiceHost() *hosting.ServiceHost {
 
 	if Build != "" {
 		host.Version = Version + "." + Build
+		os.Setenv("MIGRATION_VERSION", host.Version)
 	}
 
 	return host

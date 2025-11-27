@@ -51,6 +51,7 @@ func main() {
 
 	if Build != "" {
 		serviceHost.Version = Version + "." + Build
+		os.Setenv("MIGRATION_VERSION", serviceHost.Version)
 	}
 
 	// get options
