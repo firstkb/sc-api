@@ -17,6 +17,8 @@ type Claim struct {
 	TenantID string
 	UserID   string
 	Email    string
+	Level    int
+	Role     string
 	Claims   jwt.MapClaims
 }
 
@@ -36,6 +38,8 @@ func GetClaim(ctx context.Context) (*Claim, error) {
 			TenantID: rc.TenantID,
 			UserID:   rc.UserID,
 			Email:    rc.Email,
+			Level:    int(rc.Level),
+			Role:     string(rc.Role),
 		}, nil
 	}
 
@@ -89,6 +93,8 @@ func CreateContextWithClaim(r *http.Request, provider string) (context.Context, 
 		TenantID: claim.TenantID,
 		UserID:   claim.UserID,
 		Email:    claim.Email,
+		Level:    claim.Level,
+		Role:     claim.Role,
 	})
 	return ctx, nil
 }
@@ -107,14 +113,18 @@ func buildClaim(jwtClaims jwt.MapClaims, r *http.Request, provider string) (*Cla
 		tenantID string
 		email    string
 		userID   string
+		level    int
+		role     string
 		err      error
 	)
 
 	switch normalizeProvider(provider) {
 	case tokenProviderCognito:
 		tenantID, email, userID, err = parseCognitoClaims(jwtClaims)
+		level = 40
+		role = "user"
 	default:
-		tenantID, email, userID, err = parseInternalClaims(jwtClaims)
+		tenantID, email, userID, level, role, err = parseInternalClaims(jwtClaims)
 	}
 	if err != nil {
 		return nil, err
@@ -124,25 +134,37 @@ func buildClaim(jwtClaims jwt.MapClaims, r *http.Request, provider string) (*Cla
 		TenantID: tenantID,
 		UserID:   userID,
 		Email:    email,
+		Level:    level,
+		Role:     role,
 		Claims:   jwtClaims,
 	}, nil
 }
 
-func parseInternalClaims(jwtClaims jwt.MapClaims) (string, string, string, error) {
+func parseInternalClaims(jwtClaims jwt.MapClaims) (string, string, string, int, string, error) {
 	tenantID, err := mustStringClaim(jwtClaims, "tenant_id")
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", 0, "", err
 	}
 	email, err := mustStringClaim(jwtClaims, "email")
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", 0, "", err
 	}
-	userID, err := mustStringClaim(jwtClaims, "user_id")
+	userID, err := mustStringClaim(jwtClaims, "sub")
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", 0, "", err
 	}
 
-	return tenantID, email, userID, nil
+	// todo: add parse "level":50,"roles":["admin"] or roles: "admin,user"
+	level, err := mustIntClaim(jwtClaims, "level")
+	if err != nil {
+		return "", "", "", 0, "", err
+	}
+	role, err := mustStringClaim(jwtClaims, "role")
+	if err != nil {
+		return "", "", "", 0, "", err
+	}
+
+	return tenantID, email, userID, level, role, nil
 }
 
 func parseCognitoClaims(jwtClaims jwt.MapClaims) (string, string, string, error) {
@@ -179,6 +201,26 @@ func mustStringClaim(m jwt.MapClaims, key string) (string, error) {
 		return "", fmt.Errorf("claim %s not found in token", key)
 	}
 	return value, nil
+}
+
+func mustIntClaim(m jwt.MapClaims, key string) (int, error) {
+	value := intClaim(m, key)
+	if value == 0 {
+		return 0, fmt.Errorf("claim %s not found in token", key)
+	}
+	return value, nil
+}
+
+func intClaim(m jwt.MapClaims, key string) int {
+	if v, ok := m[key]; ok {
+		switch val := v.(type) {
+		case int:
+			return val
+		case float64:
+			return int(val)
+		}
+	}
+	return 0
 }
 
 func stringClaim(m jwt.MapClaims, key string) string {

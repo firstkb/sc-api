@@ -16,7 +16,7 @@ func Claims(logger *slog.Logger, provider string) func(http.Handler) http.Handle
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			routeInfo, ok := requestctx.Route(r.Context())
 			if !ok {
-				logger.Error("CLAIMS: route info missing", "error", errors.New("route info not found in context"))
+				logger.Error("CONTEXT: route info missing", "error", errors.New("route info not found in context"))
 				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 				return
 			}

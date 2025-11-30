@@ -8,13 +8,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/firstkb/sc-api/cmd/scapi/internal/tenantsvc"
+	authpkg "github.com/firstkb/sc-api/internal/auth"
+	"github.com/firstkb/sc-api/internal/config"
 	"github.com/firstkb/sc-api/internal/httpx/router"
 	"github.com/firstkb/sc-api/internal/postgres"
 
+	"github.com/firstkb/sc-api/cmd/scapi/internal/authsvc"
 	"github.com/firstkb/sc-api/cmd/scapi/internal/pingsvc"
-
-	"github.com/firstkb/sc-api/internal/config"
+	authhandler "github.com/firstkb/sc-api/cmd/scapi/internal/server/handler/auth"
+	"github.com/firstkb/sc-api/cmd/scapi/internal/tenantsvc"
 )
 
 type Config struct {
@@ -32,6 +34,7 @@ type MWConfig struct {
 
 type TokenConfig struct {
 	Provider string `json:"provider"`
+	Validate string `json:"validate"`
 }
 
 type DatabaseConfig struct {
@@ -61,6 +64,10 @@ type Server struct {
 	pingsvc    *pingsvc.PingService
 	classifier *router.Classifier
 	tenants    *tenantsvc.ServiceTenantProvider
+
+	authService  *authsvc.AuthService
+	authHTTP     *authhandler.Handler
+	jwksEndpoint *authpkg.JWKSEndpoint
 }
 
 func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {

@@ -1,7 +1,9 @@
 // internal/httpx/requestctx/type.go
 package requestctx
 
-import "github.com/firstkb/sc-api/internal/httpx/router"
+import (
+	"github.com/firstkb/sc-api/internal/httpx/router"
+)
 
 type ctxKey struct{}
 
@@ -47,12 +49,12 @@ type ClaimsInfo struct {
 	UserID   string
 	Email    string
 	Level    int
-	Roles    []string
+	Role     string
 }
 
 type UserInfo struct {
 	ID    string
 	Email string
 	Level int
-	Roles []string
+	Role  string
 }

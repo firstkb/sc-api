@@ -1,4 +1,4 @@
-package identitysvc
+package identity
 
 import "time"
 

@@ -4,9 +4,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/firstkb/sc-api/cmd/scapi/internal/authsvc"
 	"github.com/firstkb/sc-api/cmd/scapi/internal/pingsvc"
+	authhandler "github.com/firstkb/sc-api/cmd/scapi/internal/server/handler/auth"
 	appmw "github.com/firstkb/sc-api/cmd/scapi/internal/server/middleware"
 	"github.com/firstkb/sc-api/cmd/scapi/internal/tenantsvc"
 	"github.com/firstkb/sc-api/internal/config"
@@ -44,6 +47,21 @@ func Bootstrap(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	}
 	server.tenants = tenant
 
+	// Initialize auth service
+	authService, err := authsvc.NewService(
+		server.sqlClient, cfg, server.logger, server.tenants,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	server.jwksEndpoint = authService.NewJWKSEndpoint()
+
+	server.authService = authService
+	server.authHTTP = authhandler.New(authService)
+
+	// Build routes
+
 	mux, class := server.buildRoutes()
 	server.classifier = class
 	server.handler = server.buildHTTPHandler(mux)
@@ -58,6 +76,10 @@ func (srv *Server) buildHTTPHandler(mux http.Handler) http.Handler {
 	handler = appmw.AccessLog(srv.logger, srv.config.MW.AccessLog)(handler)
 	handler = appmw.TenantGuard(srv.logger, srv.tenants)(handler)
 	handler = appmw.Claims(srv.logger, srv.config.Token.Provider)(handler)
+
+	if strings.EqualFold(strings.TrimSpace(srv.config.Token.Validate), "internal") && srv.authService != nil {
+		handler = appmw.ValidatedClaims(srv.logger, srv.authService)(handler)
+	}
 
 	if srv.config.Origin != "" {
 		corsCfg := appmw.CORSConfig{

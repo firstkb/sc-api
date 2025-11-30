@@ -1,0 +1,12 @@
+*secret*
+.env
+.DS_Store
+_archive
+node_modules
+/log*
+
+/bin-local*
+.vscode
+.idea
+
+/secrets*

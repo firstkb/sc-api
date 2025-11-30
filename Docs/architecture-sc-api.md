@@ -28,18 +28,15 @@
   - бизнес‑правила распределены между SQL‑запросами (`repository`) и обработкой результатов в сервисах.
 
 - **Persistence / инфраструктурный слой**:
-  - пакет `internal/sqlserver`:
-    - `Client` управляет пулом соединений (`sql.DB` + драйвер MSSQL), кеширует карту `client_id -> database_name` из таблицы `client_config` и предоставляет фабрику `OpenDB`/`OpenDBMaster`;
-    - `Database` оборачивает `sql.DB` и добавляет:
-      - подстановку имени БД в SQL по плейсхолдеру `{db}`,
-      - логирование длительности запросов и ошибок MSSQL (`mssql.Error`, `mssql.ServerError`, сетевые ошибки),
-      - вспомогательный метод `Select` для получения `[]map[string]any`.
+  - пакет `internal/postgres`:
+    - `Client` управляет пулом `database/sql`, умеет разбирать DSN в формате `host=... user=...` и `postgres://`, кэширует параметры экземпляров (таблица `db_instance`) и открывает tenant‑БД по запросу (`OpenDBTenant`, `OpenDBMaster`);
+    - `Database` оборачивает `*sql.DB`, даёт вспомогательные методы (`Exec`, `Query`, `Select`) и логирование долгих запросов/ошибок;
+    - `Migrator` читает SQL‑миграции из `src/migrations/postgres/app`, обновляет мастер‑БД (таблица `migration_runs`) и последовательно применяет их ко всем tenant‑БД.
   - пакет `cmd/scapi/internal/repository`:
-    - `Repository` агрегирует `*sqlserver.Client`, `*slog.Logger` и текущий `*Claim`;
+    - `Repository` агрегирует `*postgres.Client`, `*slog.Logger` и текущий `Claim`;
     - методы:
-      - `OpenDB(ctx)` — определяет БД по `client_id` из токена (через `utils.GetClaim`) и открывает `*sqlserver.Database`;
-      - `GetPageFromId`, `GetTableSchemaEzData`, `GetTableSchema` — инкапсулируют SQL‑запросы к мультитенантным таблицам (используют MSSQL‑специфику: `TOP(1)`, `ISNULL`, `[{db}].dbo[...]`, плейсхолдеры `@pN`);
-      - `GetPlaseholder` генерирует список плейсхолдеров `@p1, @p2, ...`.
+      - `OpenDB(ctx)` — определяет tenant‑БД по сведениям из `requestctx` и открывает `postgres.Database`;
+      - дополнительные CRUD‑методы пока представляют собой thin‑wrapper над SQL и возвращают DTO (например, `ExtDBpg`).
 
 - **Cross‑cutting утилиты**:
   - пакет `cmd/scapi/internal/utils/claim.go` — разбирает JWT‑токен из заголовка `Authorization: Bearer <token>`, извлекает `username` вида `client_id|email`, вычисляет `serverName` по `Origin` и помещает `Claim` в `context.Context`;
@@ -48,23 +45,18 @@
 ### 3. Мультитенантность и работа с БД
 
 - **Модель мультитенантности**:
-  - глобальная таблица `client_config` (описана в `internal/sqlserver/client_config.sql`) содержит сопоставление `client_id -> database_name`;
-  - при каждом запросе:
-    - middleware извлекает `client_id` из JWT и помещает его в контекст;
-    - репозиторий через `Repository.OpenDB(ctx)` запрашивает у `Client` имя БД для этого `client_id` и создаёт объект `Database` с соответствующим `Name`;
-    - SQL‑шаблоны содержат плейсхолдер `{db}`, который подменяется на конкретное имя БД.
+  - мастер‑БД хранит карту tenant’ов в таблицах `tenant_db`, `db_instance`, `tenant_domain`;
+  - `postgres.Client` считывает список инстансов, а `Migrator` обновляет все обнаруженные tenant‑БД перед стартом приложения;
+  - при каждом запросе middleware помещает tenant‑контекст в `requestctx`, после чего репозиторий вызывает `Client.OpenDBTenant(ctx, tenant.DBName, tenant.DBInstanceCode)` и получает `*sql.DB` уже на уровне PostgreSQL.
 
-- **Специфика MSSQL в текущей реализации**:
-  - используется драйвер `github.com/microsoft/go-mssqldb` и его `Connector` с `SessionInitSQL`;
-  - в запросах активно применяются:
-    - `TOP(1)` и `TOP 1 *` для ограничения выборок;
-    - функция `ISNULL(...)` для замены `NULL` на `''`;
-    - схема `[{db}].dbo.[Table]` и плейсхолдеры `@p1` и т.п.;
-  - таблица `client_config` использует тип `rowversion` и `MAX(rowversion)` для отслеживания изменений маппинга БД.
+- **Особенности работы с PostgreSQL**:
+  - подключение формируется строкой `"host=... port=... dbname=... user=... password=... sslmode=..."`;
+  - SQL‑запросы используют позиционные плейсхолдеры `$1`, `$2`, а агрегация и логика выполняются средствами Postgres (например, `COALESCE`, CTE);
+  - таблица `migration_runs` фиксирует версию миграции и список tenant‑БД, на которые она успешно применена.
 
 ### 4. Сильные стороны текущей архитектуры
 
-- Чётко выделенный пакет `internal/sqlserver` как инфраструктурный адаптер БД, через который проходят все SQL‑операции.
+- Чётко выделенный пакет `internal/postgres` как инфраструктурный адаптер БД, через который проходят все SQL‑операции и миграции.
 - Унифицированная обработка ошибок HTTP и логирование контекстной информации (claim, код операции) через `wrapErr`.
 - Простая и прозрачная организация HTTP‑слоя: небольшое число хэндлеров, отдельные middleware для CORS и аутентификации.
 - Гибкая система конфигурации и опций:
@@ -72,9 +64,9 @@
 
 ### 5. Основные ограничения и зоны для улучшений
 
-- **Связанность с MSSQL**:
-  - SQL‑запросы и инфраструктура жёстко завязаны на синтаксис MSSQL и типы драйвера (`mssql.Error`, `rowversion`, `ISNULL`, `TOP` и т.п.);
-  - плейсхолдеры параметров (`@p1`) и формат DSN (`server=...;user id=...`) специфичны для MSSQL, что усложняет миграцию на PostgreSQL.
+- **Связанность transport‑ и persistence‑слоёв**:
+  - `server.Server` всё ещё напрямую создаёт `postgres.Client`, запускает миграции и хранит на себе `*postgres.Client`, из‑за чего HTTP‑слой знает детали инфраструктуры;
+  - репозитории возвращают DTO, тесно связанные со схемой БД, и не отделены интерфейсами, что усложняет подмену реализаций в тестах.
 
 - **Смешение слоёв**:
   - `server.Server` одновременно:

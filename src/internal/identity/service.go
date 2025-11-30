@@ -1,4 +1,4 @@
-package identitysvc
+package identity
 
 import (
 	"context"
@@ -82,6 +82,16 @@ func (s *Service) FindOrCreateSubject(ctx context.Context, subjectType SubjectTy
 	return s.repository.CreateSubject(ctx, subj)
 }
 
+func (s *Service) FindSubject(ctx context.Context, subjectType SubjectType, rawValue string) (*Subject, error) {
+	normalized, err := normalizeSubjectValue(subjectType, rawValue)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := s.computeHMAC(normalized)
+	return s.repository.FindSubject(ctx, subjectType, hash)
+}
+
 func (s *Service) GrantAccess(ctx context.Context, tenantID int64, tenantUserID string, subjectType SubjectType, contactValue string, role string, level int, status string) (*Membership, error) {
 	subj, err := s.FindOrCreateSubject(ctx, subjectType, contactValue, false)
 	if err != nil {
@@ -101,6 +111,10 @@ func (s *Service) GrantAccess(ctx context.Context, tenantID int64, tenantUserID 
 
 func (s *Service) RevokeAccess(ctx context.Context, tenantID int64, identityID int64, tenantUserID string) error {
 	return s.repository.DeleteMembership(ctx, tenantID, identityID, tenantUserID)
+}
+
+func (s *Service) ListMemberships(ctx context.Context, identityID int64) ([]*Membership, error) {
+	return s.repository.ListMembershipsByIdentity(ctx, identityID)
 }
 
 func (s *Service) computeHMAC(value string) []byte {

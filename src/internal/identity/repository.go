@@ -1,4 +1,4 @@
-package identitysvc
+package identity
 
 import (
 	"context"
@@ -106,4 +106,45 @@ DELETE FROM identity_tenant_membership
 		return fmt.Errorf("delete membership: %w", err)
 	}
 	return nil
+}
+
+func (r *Repository) ListMembershipsByIdentity(ctx context.Context, identityID int64) ([]*Membership, error) {
+	db, err := r.client.OpenDBMaster(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open master db: %w", err)
+	}
+
+	const query = `
+SELECT tenant_id, identity_id, tenant_user_id, role, level, status, created_at, updated_at
+  FROM identity_tenant_membership
+ WHERE identity_id = $1
+`
+
+	rows, err := db.Query(query, identityID)
+	if err != nil {
+		return nil, fmt.Errorf("list memberships: %w", err)
+	}
+	defer rows.Close()
+
+	var memberships []*Membership
+	for rows.Next() {
+		var m Membership
+		if err := rows.Scan(
+			&m.TenantID,
+			&m.IdentityID,
+			&m.TenantUserID,
+			&m.Role,
+			&m.Level,
+			&m.Status,
+			&m.CreatedAt,
+			&m.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan membership: %w", err)
+		}
+		memberships = append(memberships, &m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list memberships: %w", err)
+	}
+	return memberships, nil
 }

@@ -10,6 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.57.2
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/knadh/koanf/parsers/hjson v0.1.0
@@ -22,6 +23,7 @@ require (
 	github.com/knadh/koanf/v2 v2.1.2
 	github.com/lib/pq v1.10.9
 	github.com/phuslu/log v1.0.115
+	golang.org/x/crypto v0.26.0
 	golang.org/x/sys v0.37.0
 )
 
@@ -45,7 +47,6 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
-	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
